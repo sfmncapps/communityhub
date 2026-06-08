@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import supabase from "../config/supabaseClient";
 
@@ -15,13 +15,15 @@ import "./dashboard.css";
 
 const Dashboard = () => {
   const [activePage, setActivePage] = useState("profile");
-  const navigate = useNavigate(); // must be before useEffect
 
-  // ✅ MOVE useEffect INSIDE component
-  useEffect(() => {
-  const token = localStorage.getItem("token");
-  if (!token) navigate("/login", { replace: true });
-}, [navigate]);
+  const navigate = useNavigate();
+
+  // ✅ LOGOUT
+  const logout = async () => {
+    await supabase.auth.signOut();
+
+    navigate("/");
+  };
 
   const renderPage = () => {
     switch (activePage) {
@@ -47,7 +49,26 @@ const Dashboard = () => {
   return (
     <div className="dashboard-layout">
       <Sidebar activePage={activePage} setActivePage={setActivePage} />
-      <div className="dashboard-main">{renderPage()}</div>
+
+      <div className="dashboard-main">
+
+        <button
+          onClick={logout}
+          style={{
+            padding: "10px 16px",
+            border: "none",
+            borderRadius: "8px",
+            background: "#dc2626",
+            color: "#fff",
+            cursor: "pointer",
+            marginBottom: "20px",
+          }}
+        >
+          Logout
+        </button>
+
+        {renderPage()}
+      </div>
     </div>
   );
 };

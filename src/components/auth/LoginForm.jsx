@@ -6,11 +6,8 @@ import supabase from "../../config/supabaseClient";
 const LoginForm = () => {
   const navigate = useNavigate();
 
-  /* =========================
-     NEW OTP FLOW STATES
-  ========================== */
-  const [mode, setMode] = useState(null); // email | phone | whatsapp
-  const [step, setStep] = useState("enter"); // enter | otp | password
+  const [mode, setMode] = useState(null);
+  const [step, setStep] = useState("enter");
 
   const [identifier, setIdentifier] = useState("");
   const [otp, setOtp] = useState("");
@@ -19,84 +16,50 @@ const LoginForm = () => {
 
   const API = "http://localhost:5000/api";
 
-  /* =========================
-     GOOGLE / APPLE SESSION CHECK
-  ========================== */
+  /* ✅ FIX: ADMIN APPROVAL REMOVED */
   useEffect(() => {
-  const { data: listener } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      if (!session?.user) return;
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
 
-      const email = session.user.email;
-      const supaUserId = session.user.id; // important for Apple
-
-      /* 1️⃣ Check users_active */
-      const { data: activeUser } = await supabase
-        .from("users_active")
-        .select("*")
-        .eq("email", email)
-        .single();
-
-      if (activeUser) {
-        navigate("/dashboard");
-        return;
-      }
-
-      /* 2️⃣ Check users_pending */
-      const { data: pendingUser } = await supabase
-        .from("users_pending")
-        .select("*")
-        .eq("email", email)
-        .single();
-
-      if (pendingUser) {
-        alert("Waiting for admin approval.");
-        return;
-      }
-
-      /* 3️⃣ If not found anywhere → Insert into users_pending */
-      await supabase.from("users_pending").insert([
-        {
-          email,
-          approved: false,
-          login_method: event === "SIGNED_IN" ? session.user.app_metadata.provider : "google",
-          oauth_provider: session.user.app_metadata.provider,
-          oauth_uid: supaUserId,
-        },
-      ]);
-
-      alert("Registered successfully. Waiting for admin approval.");
+    // ✅ login ayithe dashboard
+    if (session?.user) {
+      navigate("/dashboard");
     }
-  );
 
-  return () => listener.subscription.unsubscribe();
+  });
+
+  return () => subscription.unsubscribe();
 }, [navigate]);
 
-  /* =========================
-     NORMAL LOGIN (username/email/phone + password)
-  ========================== */
+  /* NORMAL LOGIN */
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     const identifier = e.target.username.value;
     const password = e.target.password.value;
 
-    const user = await loginUser(identifier, password);
-    if (user) navigate("/dashboard");
+    try {
+      const user = await loginUser(identifier, password);
+      if (user) navigate("/dashboard");
+    } catch (err) {
+      alert("Invalid credentials");
+    }
   };
 
-  /* =========================
-     GOOGLE LOGIN
-  ========================== */
+  /* GOOGLE */
   const loginWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-    });
-    if (error) alert(error.message);
-  };
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/dashboard`,
+    },
+  });
 
-  /* =========================
-     APPLE LOGIN
-  ========================== */
+  if (error) alert(error.message);
+};
+
+  /* APPLE */
   const loginWithApple = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "apple",
@@ -104,9 +67,7 @@ const LoginForm = () => {
     if (error) alert(error.message);
   };
 
-  /* =========================
-     SEND OTP
-  ========================== */
+  /* OTP FLOW */
   const sendOtp = async () => {
     if (!mode) return alert("Select login method");
     if (!identifier.trim()) return alert("Enter Email / Phone / WhatsApp number");
@@ -124,9 +85,6 @@ const LoginForm = () => {
     setStep("otp");
   };
 
-  /* =========================
-     VERIFY OTP
-  ========================== */
   const verifyOtp = async () => {
     if (!otp.trim()) return alert("Enter OTP");
 
@@ -144,9 +102,6 @@ const LoginForm = () => {
     setStep("password");
   };
 
-  /* =========================
-     COMPLETE SIGNUP (Insert into users_pending)
-  ========================== */
   const completeSignup = async () => {
     if (!newPassword.trim()) return alert("Set password");
 
@@ -162,9 +117,8 @@ const LoginForm = () => {
     const data = await res.json();
     if (!res.ok) return alert(data.message || "Signup failed");
 
-    alert("Submitted for admin approval.");
+    alert("Account created successfully"); // ✅ FIXED TEXT
 
-    // reset states
     setMode(null);
     setStep("enter");
     setIdentifier("");
@@ -188,80 +142,33 @@ const LoginForm = () => {
         <form className="login-form" onSubmit={handleSubmit}>
           <h2>Login</h2>
 
-          {/* NORMAL LOGIN */}
           <input name="username" placeholder="Username / Email / Phone" required />
           <input name="password" type="password" placeholder="Password" required />
           <button type="submit">Login</button>
 
-          {/* ALT LOGIN */}
           <div className="alt-login">
             <div className="icon-row">
-              {/* GOOGLE */}
               <button type="button" className="icon-btn" onClick={loginWithGoogle}>
-                <img
-                  alt="google"
-                  src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg"
-                />
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="google"/>
               </button>
 
-              {/* EMAIL */}
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => {
-                  setMode("email");
-                  setStep("enter");
-                  setIdentifier("");
-                  setOtp("");
-                  setNewPassword("");
-                  setTempToken("");
-                }}
-              >
-                <img alt="email" src="https://cdn-icons-png.flaticon.com/512/561/561127.png" />
+              <button type="button" className="icon-btn" onClick={() => { setMode("email"); }}>
+                <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png" alt="email"/>
               </button>
 
-              {/* PHONE */}
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => {
-                  setMode("phone");
-                  setStep("enter");
-                  setIdentifier("");
-                  setOtp("");
-                  setNewPassword("");
-                  setTempToken("");
-                }}
-              >
-                <img alt="phone" src="https://cdn-icons-png.flaticon.com/512/724/724664.png" />
+              <button type="button" className="icon-btn" onClick={() => { setMode("phone"); }}>
+                <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png" alt="phone"/>
               </button>
 
-              {/* WHATSAPP */}
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => {
-                  setMode("whatsapp");
-                  setStep("enter");
-                  setIdentifier("");
-                  setOtp("");
-                  setNewPassword("");
-                  setTempToken("");
-                }}
-              >
-                <img
-                  alt="whatsapp"
-                  src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
-                />
+              <button type="button" className="icon-btn" onClick={() => { setMode("whatsapp"); }}>
+                <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="whatsapp"/>
               </button>
 
-              {/* APPLE */}
               <button type="button" className="icon-btn" onClick={loginWithApple}>
-                <img alt="apple" src="https://cdn-icons-png.flaticon.com/512/0/747.png" />
+                <img src="https://cdn-icons-png.flaticon.com/512/0/747.png" alt="apple"/>
               </button>
             </div>
 
-            {/* OTP FLOW UI (below icons) */}
             {mode && (
               <div className="otp-box">
                 <div className="otp-title">
@@ -272,61 +179,33 @@ const LoginForm = () => {
 
                 {step === "enter" && (
                   <div className="otp-form-col">
-                    <input
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder={
-                        mode === "email"
-                          ? "Enter your email"
-                          : "Enter number with country code (ex: +91XXXXXXXXXX)"
-                      }
-                      required
-                    />
-                    <button type="button" onClick={sendOtp}>
-                      Send OTP
-                    </button>
+                    <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="Enter value"/>
+                    <button type="button" onClick={sendOtp}>Send OTP</button>
                   </div>
                 )}
 
                 {step === "otp" && (
                   <div className="otp-form-col">
-                    <input
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      placeholder="Enter OTP"
-                      required
-                    />
-                    <button type="button" onClick={verifyOtp}>
-                      Verify OTP
-                    </button>
+                    <input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter OTP"/>
+                    <button type="button" onClick={verifyOtp}>Verify OTP</button>
                   </div>
                 )}
 
                 {step === "password" && (
                   <div className="otp-form-col">
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Set Password"
-                      required
-                    />
-                    <button type="button" onClick={completeSignup}>
-                      Submit for Approval
-                    </button>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Set Password"/>
+                    <button type="button" onClick={completeSignup}>Create Account</button>
                   </div>
                 )}
 
-                <button type="button" className="otp-cancel" onClick={cancelOtpFlow}>
-                  Cancel
-                </button>
+                <button type="button" className="otp-cancel" onClick={cancelOtpFlow}>Cancel</button>
               </div>
             )}
           </div>
         </form>
       </div>
 
-      {/* ✅ CSS INCLUDED */}
+      {/* ✅ YOUR ORIGINAL CSS */}
       <style>{`
         .login-page {
           min-height: 50vh;
@@ -403,7 +282,6 @@ const LoginForm = () => {
           height: 22px;
         }
 
-        /* OTP BOX */
         .otp-box {
           margin-top: 16px;
           padding: 14px;
@@ -425,23 +303,10 @@ const LoginForm = () => {
           gap: 10px;
         }
 
-        .otp-form-col input {
-          margin-bottom: 0;
-        }
-
         .otp-cancel {
           margin-top: 10px !important;
           background: #e2e8f0 !important;
           color: #0f172a !important;
-        }
-
-        @media (max-width: 520px) {
-          .login-form {
-            padding: 18px 16px 22px 16px;
-          }
-          .icon-row {
-            gap: 8px;
-          }
         }
       `}</style>
     </>

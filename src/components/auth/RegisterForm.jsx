@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { registerUser } from "../../services/authService";
 
-
-
 const RegisterForm = () => {
   const [formData, setFormData] = useState({
     username: "",
@@ -32,58 +30,59 @@ const RegisterForm = () => {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  // Mandatory check
-  for (let key in formData) {
-    if (!formData[key].trim()) {
-      setError("All fields are mandatory");
+    // Mandatory check
+    for (let key in formData) {
+      if (!formData[key].trim()) {
+        setError("All fields are mandatory");
+        return;
+      }
+    }
+
+    if (!validateUsername(formData.username)) {
+      setError(
+        "Username must be 7-15 chars with uppercase, lowercase, number & special character"
+      );
       return;
     }
-  }
 
-  if (!validateUsername(formData.username)) {
-    setError(
-      "Username must be 7-15 chars with uppercase, lowercase, number & special character"
-    );
-    return;
-  }
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
 
-  if (formData.password !== formData.confirmPassword) {
-    setError("Passwords do not match");
-    return;
-  }
+    const { confirmPassword, ...dataToSend } = formData;
 
-  // ❗ Remove confirmPassword before sending to DB
-  const { confirmPassword, ...dataToSend } = formData;
+    try {
+      await registerUser(dataToSend);
+      alert("Registered successfully");
+    } catch (err) {
+      setError("Registration failed");
+    }
 
-  // ✅ SEND TO SUPABASE
-  await registerUser(dataToSend);
-
-  // Optional: reset form
-  setFormData({
-    username: "",
-    name: "",
-    email: "",
-    phone: "",
-    companyName: "",
-    category: "",
-    companyAddress: "",
-    password: "",
-    confirmPassword: "",
-  });
-};
-
+    // reset
+    setFormData({
+      username: "",
+      name: "",
+      email: "",
+      phone: "",
+      companyName: "",
+      category: "",
+      companyAddress: "",
+      password: "",
+      confirmPassword: "",
+    });
+  };
 
   return (
     <div style={styles.page}>
       <form style={styles.card} onSubmit={handleSubmit}>
-        <h2 style={{marginBottom: "10px", color: "linear-gradient(135deg, #0f766e, #16a34a)", textAlign: "center" }}>User Registration</h2>
+        <h2 style={styles.heading}>User Registration</h2>
 
         {error && <p style={styles.error}>{error}</p>}
 
-        {/* Username */}
         <input
           name="username"
           placeholder="Username"
@@ -93,7 +92,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Full Name */}
         <input
           name="name"
           placeholder="Full Name"
@@ -103,7 +101,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Email */}
         <input
           name="email"
           type="email"
@@ -114,7 +111,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Phone */}
         <input
           name="phone"
           placeholder="Phone Number"
@@ -124,7 +120,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Company Name */}
         <input
           name="companyName"
           placeholder="Company Name"
@@ -134,7 +129,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Category */}
         <select
           name="category"
           value={formData.category}
@@ -147,7 +141,6 @@ const RegisterForm = () => {
           <option value="Non-IT">Non-IT</option>
         </select>
 
-        {/* Company Address (Simple) */}
         <textarea
           name="companyAddress"
           placeholder="Company Address"
@@ -157,7 +150,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Password */}
         <input
           name="password"
           type="password"
@@ -168,7 +160,6 @@ const RegisterForm = () => {
           required
         />
 
-        {/* Confirm Password */}
         <input
           name="confirmPassword"
           type="password"
@@ -187,11 +178,10 @@ const RegisterForm = () => {
   );
 };
 
-
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "transparent", // removed grey background
+    background: "transparent",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -200,24 +190,29 @@ const styles = {
 
   card: {
     background: "#ffffff",
-    padding: "10px 10px 10px 10px",
+    padding: "10px",
     width: "150%",
-    
     borderRadius: "18px",
-    boxShadow: "0 15px 40px rgba(0,0,0,0.06)", // soft shadow (not dark)
+    boxShadow: "0 15px 40px rgba(0,0,0,0.06)",
     display: "flex",
     flexDirection: "column",
   },
 
+  heading: {
+    marginBottom: "10px",
+    background: "linear-gradient(135deg, #0f766e, #16a34a)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    textAlign: "center",
+  },
+
   input: {
-    width: "100%",  // full width fix
+    width: "100%",
     padding: "12px 14px",
     marginBottom: "14px",
     borderRadius: "8px",
     border: "1px solid #d1d5db",
     fontSize: "14px",
-    outline: "none",
-    transition: "0.3s ease",
   },
 
   textarea: {
@@ -229,8 +224,6 @@ const styles = {
     border: "1px solid #d1d5db",
     fontSize: "14px",
     resize: "none",
-    outline: "none",
-    transition: "0.3s ease",
   },
 
   button: {
@@ -243,17 +236,14 @@ const styles = {
     borderRadius: "8px",
     cursor: "pointer",
     fontWeight: "600",
-    fontSize: "15px",
-    transition: "0.3s ease",
   },
 
   error: {
-    color: "linear-gradient(135deg, #0f766e, #16a34a)",
+    color: "red",
     fontSize: "13px",
     marginBottom: "12px",
     textAlign: "center",
   },
 };
-
 
 export default RegisterForm;
