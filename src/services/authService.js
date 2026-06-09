@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 /* ================= REGISTER ================= */
 export const registerUser = async (formData) => {
   try {
-    const res = await fetch("http://localhost:5000/api/auth/register", {
+    const res = await fetch("https://communityhub.sunflowerwebtek.com/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -40,7 +40,7 @@ export const registerUser = async (formData) => {
 };
 export const loginUser = async (identifier, password) => {
   try {
-    const res = await fetch("http://localhost:5000/api/auth/login", {
+    const res = await fetch("https://communityhub.sunflowerwebtek.com/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),

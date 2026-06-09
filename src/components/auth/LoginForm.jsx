@@ -14,7 +14,7 @@ const LoginForm = () => {
   const [newPassword, setNewPassword] = useState("");
   const [tempToken, setTempToken] = useState("");
 
-  const API = "http://localhost:5000/api";
+  const API = "https://communityhub.sunflowerwebtek.com/api";
 
   /* ✅ FIX: ADMIN APPROVAL REMOVED */
   useEffect(() => {
