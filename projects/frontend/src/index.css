@@ -1,0 +1,60 @@
+:root {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light;
+  color: #0f172a;
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #2563eb;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #1d4ed8;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Explicit input & placeholder styling for 100% visibility across all themes */
+input, textarea, select {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+::-webkit-input-placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+::-moz-placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+:-ms-input-placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+button {
+  font-family: inherit;
+}

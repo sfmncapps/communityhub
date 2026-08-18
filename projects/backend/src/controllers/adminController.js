@@ -1,0 +1,120 @@
+import { createClient } from "@supabase/supabase-js";
+import { sendEmailOtp, sendSmsOtp, sendWhatsAppOtp } from "../utils/notify.js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+export const sendApproval = async (req, res) => {
+  const { id, role = "user" } = req.body;
+
+  try {
+    const { data: pendingUser, error: fetchErr } = await supabase
+      .from("users_pending")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (fetchErr || !pendingUser) {
+      return res.status(404).json({ message: "Pending user not found" });
+    }
+
+    const { error: insertErr } = await supabase
+      .from("users_active")
+      .insert([
+        {
+          auth_id: pendingUser.auth_id,
+          username: pendingUser.username,
+          name: pendingUser.name,
+          email: pendingUser.email,
+          phone: pendingUser.phone,
+          whatsapp: pendingUser.whatsapp,
+          company_name: pendingUser.company_name,
+          category: pendingUser.category,
+          company_address: pendingUser.company_address,
+          password: pendingUser.password,
+          login_method: pendingUser.login_method,
+          role: role || pendingUser.role || "user",
+          verification_status: "unverified",
+        },
+      ]);
+
+    if (insertErr) {
+      return res.status(500).json({ message: insertErr.message });
+    }
+
+    await supabase.from("users_pending").delete().eq("id", id);
+
+    const msg = `✅ Your account has been approved as role '${role}'. You can login now.`;
+
+    if (pendingUser.login_method === "email" && pendingUser.email) {
+      await sendEmailOtp(pendingUser.email, msg);
+    }
+    if (pendingUser.login_method === "phone" && pendingUser.phone) {
+      await sendSmsOtp(pendingUser.phone, msg);
+    }
+    if (pendingUser.login_method === "whatsapp" && pendingUser.whatsapp) {
+      await sendWhatsAppOtp(pendingUser.whatsapp, msg);
+    }
+
+    return res.json({ message: "User approved successfully" });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+export const getPendingUsers = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("users_pending")
+      .select("*")
+      .eq("approved", false)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ message: error.message });
+    return res.json({ users: data || [] });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// GET /api/admin/users (List all active users)
+export const getAllUsers = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("users_active")
+      .select("id, username, name, email, phone, company_name, category, role, verification_status, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ message: error.message });
+    return res.json({ users: data || [] });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// PUT /api/admin/users/:id/role (Superadmin/Admin update user role)
+export const updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    const validRoles = ["superadmin", "admin", "manager", "user"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: `Role must be one of: ${validRoles.join(", ")}` });
+    }
+
+    const { data: updated, error } = await supabase
+      .from("users_active")
+      .update({ role })
+      .eq("id", id)
+      .select("id, name, email, role")
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+    return res.json({ message: "User role updated successfully", user: updated });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
