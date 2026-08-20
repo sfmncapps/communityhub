@@ -5,6 +5,7 @@ import supabase from "../config/supabaseClient";
 import Sidebar from "./Sidebar";
 import Profile from "./Profile";
 import VerificationUpload from "../components/user/VerificationUpload";
+import CreateCollective from "../components/user/CreateCollective";
 import MessagingCenter from "./MessagingCenter";
 
 import "./dashboard.css";
@@ -24,6 +25,8 @@ const Dashboard = () => {
     switch (activePage) {
       case "verification":
         return <VerificationUpload />;
+      case "create-collective":
+        return <CreateCollective />;
       case "messages":
         return <MessagingCenter />;
       default:

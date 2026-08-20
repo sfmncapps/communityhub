@@ -12,66 +12,124 @@ const formatPhone = (num) => {
   return `+91${cleaned}`;
 };
 
-export const sendEmailOtp = async (to, otp) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+// Generic Email Dispatcher supporting Resend, SendGrid, and SMTP
+export const sendEmailNotification = async ({ to, subject, htmlText, senderName = "CommunityHub" }) => {
+  if (!to) return;
 
-  await transporter.sendMail({
-    from: process.env.SMTP_USER,
-    to,
-    subject: "CommunityHub Notification",
-    html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h3>CommunityHub Update</h3>
-        <p>${String(otp).replace(/\n/g, "<br/>")}</p>
-      </div>
-    `,
-  });
+  const resendKey = process.env.RESEND_API_KEY;
+  const sendgridKey = process.env.SENDGRID_API_KEY;
 
-  console.log("✅ Email sent to:", to);
+  // 1. Resend API Dispatch
+  if (resendKey) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resendKey}`,
+        },
+        body: JSON.stringify({
+          from: `${senderName} <notifications@communityhub.org>`,
+          to: [to],
+          subject: subject,
+          html: htmlText,
+        }),
+      });
+      if (res.ok) {
+        console.log(`✅ [Resend Email Sent] To: ${to} | Subject: ${subject}`);
+        return;
+      }
+    } catch (err) {
+      console.warn("Resend email dispatch error:", err.message);
+    }
+  }
+
+  // 2. SendGrid API Dispatch
+  if (sendgridKey) {
+    try {
+      const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sendgridKey}`,
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: to }] }],
+          from: { email: "notifications@communityhub.org", name: senderName },
+          subject: subject,
+          content: [{ type: "text/html", value: htmlText }],
+        }),
+      });
+      if (res.ok || res.status === 202) {
+        console.log(`✅ [SendGrid Email Sent] To: ${to} | Subject: ${subject}`);
+        return;
+      }
+    } catch (err) {
+      console.warn("SendGrid email dispatch error:", err.message);
+    }
+  }
+
+  // 3. Nodemailer SMTP Fallback
+  if (process.env.SMTP_USER) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: `"${senderName}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html: htmlText,
+      });
+
+      console.log(`✅ [SMTP Email Sent] To: ${to} | Subject: ${subject}`);
+      return;
+    } catch (err) {
+      console.warn("SMTP email dispatch error:", err.message);
+    }
+  }
+
+  console.log(`ℹ️ [Email Dispatch Simulated] To: ${to} | Subject: ${subject}`);
 };
 
-// Email Mirroring Trigger for In-App Messaging
+export const sendEmailOtp = async (to, otp) => {
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px;">
+      <h3>CommunityHub Update</h3>
+      <p>${String(otp).replace(/\n/g, "<br/>")}</p>
+    </div>
+  `;
+  await sendEmailNotification({ to, subject: "CommunityHub Notification", htmlText: html });
+};
+
+// Email Mirroring Trigger for In-App Messaging (RFP Deliverable)
 export const sendNewMessageNotification = async (toEmail, senderName, messagePreview) => {
   if (!toEmail) return;
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px;">
+      <h2 style="color: #2563eb; margin-top: 0;">💬 New Message Received</h2>
+      <p style="font-size: 15px;"><strong>${senderName}</strong> sent you a message on CommunityHub:</p>
+      <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 12px; font-style: italic; margin: 15px 0;">
+        "${messagePreview}"
+      </div>
+      <p style="font-size: 13px; color: #64748b;">Log in to your CommunityHub Dashboard to reply to this conversation.</p>
+    </div>
+  `;
 
-    await transporter.sendMail({
-      from: `"CommunityHub Messaging" <${process.env.SMTP_USER}>`,
-      to: toEmail,
-      subject: `New message from ${senderName} on CommunityHub`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; max-width: 500px;">
-          <h2 style="color: #2563eb; margin-top: 0;">💬 New Message Received</h2>
-          <p style="font-size: 15px;"><strong>${senderName}</strong> sent you a message:</p>
-          <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 12px; font-style: italic; margin: 15px 0;">
-            "${messagePreview}"
-          </div>
-          <p style="font-size: 13px; color: #64748b;">Log in to your CommunityHub Dashboard to reply to this conversation.</p>
-        </div>
-      `,
-    });
-    console.log(`✅ Message email mirrored to ${toEmail}`);
-  } catch (err) {
-    console.error("⚠️ Failed to mirror message via email:", err.message);
-  }
+  await sendEmailNotification({
+    to: toEmail,
+    subject: `New message from ${senderName} on CommunityHub`,
+    htmlText: html,
+    senderName: "CommunityHub Messaging",
+  });
 };
 
 export const sendSmsOtp = async (to, otp) => {

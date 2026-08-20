@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import supabase from "../../config/supabaseClient";
 
 export default function ManageVerifications() {
   const [pendingList, setPendingList] = useState([]);
@@ -12,43 +13,100 @@ export default function ManageVerifications() {
 
   const fetchPendingVerifications = async () => {
     setLoading(true);
-    const token = localStorage.getItem("token");
+    let results = [];
+
     try {
-      const res = await fetch("http://localhost:5000/api/verification/pending", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPendingList(data.pendingVerifications || []);
+      // 1. Direct query from Supabase id_verifications table per RFP requirement
+      const { data: verData, error: verErr } = await supabase
+        .from("id_verifications")
+        .select("*")
+        .eq("status", "pending");
+
+      if (!verErr && verData && verData.length > 0) {
+        // Resolve storage URLs for image documents
+        results = verData.map((item) => {
+          let docUrl = item.document_url;
+          if (docUrl && !docUrl.startsWith("http") && !docUrl.startsWith("blob:")) {
+            const { data: publicUrlObj } = supabase.storage
+              .from("id-documents")
+              .getPublicUrl(docUrl);
+            docUrl = publicUrlObj?.publicUrl || docUrl;
+          }
+          return {
+            ...item,
+            id: item.id,
+            user_id: item.user_id,
+            name: `User (${(item.user_id || "").slice(0, 8)})`,
+            redacted_id_url: docUrl,
+            id_type: item.id_type || "Driver's License",
+          };
+        });
       }
+
+      // 2. Fallback/enrich from Express Backend API
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const res = await fetch("http://localhost:5000/api/verification/pending", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const apiItems = data.pendingVerifications || [];
+            if (apiItems.length > 0) {
+              results = apiItems;
+            }
+          }
+        } catch (apiErr) {
+          console.warn("Backend verification query fallback:", apiErr.message);
+        }
+      }
+
+      setPendingList(results);
     } catch (e) {
-      console.error(e);
+      console.error("Pending verifications fetch error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleReview = async (userId, status) => {
-    setSubmittingId(userId);
-    const token = localStorage.getItem("token");
-    const notes = reviewNotes[userId] || "";
+  const handleReview = async (idOrUserId, status) => {
+    setSubmittingId(idOrUserId);
+    const notes = reviewNotes[idOrUserId] || "";
 
     try {
-      const res = await fetch(`http://localhost:5000/api/verification/${userId}/review`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status, notes }),
-      });
+      // Update status in Supabase id_verifications table
+      const { data: currentAuth } = await supabase.auth.getUser();
+      const reviewerId = currentAuth?.user?.id || null;
 
-      if (res.ok) {
-        setPendingList((prev) => prev.filter((item) => item.id !== userId));
-      } else {
-        const errData = await res.json();
-        alert(errData.message || "Failed to submit review");
+      await supabase
+        .from("id_verifications")
+        .update({
+          status: status === "verified" || status === "approved" ? "approved" : "rejected",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: reviewerId,
+        })
+        .or(`id.eq.${idOrUserId},user_id.eq.${idOrUserId}`);
+
+      // Backend API call sync if token present
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          await fetch(`http://localhost:5000/api/verification/${idOrUserId}/review`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: status === "approved" ? "verified" : status, notes }),
+          });
+        } catch (err) {
+          console.warn("API review sync warning:", err.message);
+        }
       }
+
+      // Filter out reviewed request from UI state
+      setPendingList((prev) => prev.filter((item) => item.id !== idOrUserId && item.user_id !== idOrUserId));
     } catch (e) {
       alert("Error submitting review: " + e.message);
     } finally {
@@ -70,11 +128,11 @@ export default function ManageVerifications() {
       ) : (
         <div className="verifications-grid">
           {pendingList.map((user) => (
-            <div key={user.id} className="verification-card">
+            <div key={user.id || user.user_id} className="verification-card">
               <div className="card-header">
                 <div>
-                  <h4>{user.name || user.username}</h4>
-                  <p className="email-text">{user.email} {user.phone ? `| ${user.phone}` : ""}</p>
+                  <h4>{user.name || user.username || `User ID: ${(user.user_id || "").slice(0, 8)}`}</h4>
+                  <p className="email-text">{user.email ? user.email : user.submitted_at ? `Submitted: ${new Date(user.submitted_at).toLocaleDateString()}` : ""} {user.phone ? `| ${user.phone}` : ""}</p>
                   {user.company_name && <p className="company-text">Company: {user.company_name}</p>}
                 </div>
                 <span className="type-badge">{user.id_type || "Driver's License"}</span>
@@ -82,9 +140,9 @@ export default function ManageVerifications() {
 
               {/* DOCUMENT IMAGE PREVIEW */}
               <div className="doc-preview">
-                {user.redacted_id_url ? (
-                  <a href={user.redacted_id_url} target="_blank" rel="noopener noreferrer">
-                    <img src={user.redacted_id_url} alt="Redacted ID Document" />
+                {user.redacted_id_url || user.document_url ? (
+                  <a href={user.redacted_id_url || user.document_url} target="_blank" rel="noopener noreferrer">
+                    <img src={user.redacted_id_url || user.document_url} alt="Redacted ID Document" />
                     <span className="zoom-text">🔍 Click to Open Full Resolution Document</span>
                   </a>
                 ) : (
@@ -94,12 +152,12 @@ export default function ManageVerifications() {
 
               {/* NOTES INPUT */}
               <div className="notes-field">
-                <label>Admin Review Notes (optional for rejection):</label>
+                <label>Admin Review Notes (optional):</label>
                 <input
                   type="text"
                   placeholder="e.g. Approved or Redact document number further..."
-                  value={reviewNotes[user.id] || ""}
-                  onChange={(e) => setReviewNotes({ ...reviewNotes, [user.id]: e.target.value })}
+                  value={reviewNotes[user.id || user.user_id] || ""}
+                  onChange={(e) => setReviewNotes({ ...reviewNotes, [user.id || user.user_id]: e.target.value })}
                 />
               </div>
 
@@ -107,15 +165,15 @@ export default function ManageVerifications() {
               <div className="actions-row">
                 <button
                   className="approve-btn"
-                  disabled={submittingId === user.id}
-                  onClick={() => handleReview(user.id, "verified")}
+                  disabled={submittingId === (user.id || user.user_id)}
+                  onClick={() => handleReview(user.id || user.user_id, "approved")}
                 >
                   ✓ Approve Verification
                 </button>
                 <button
                   className="reject-btn"
-                  disabled={submittingId === user.id}
-                  onClick={() => handleReview(user.id, "rejected")}
+                  disabled={submittingId === (user.id || user.user_id)}
+                  onClick={() => handleReview(user.id || user.user_id, "rejected")}
                 >
                   ✖ Reject Document
                 </button>
@@ -127,7 +185,7 @@ export default function ManageVerifications() {
 
       <style>{`
         .manage-verifications {
-          font-family: sans-serif;
+          font-family: system-ui, sans-serif;
           padding: 10px;
         }
 

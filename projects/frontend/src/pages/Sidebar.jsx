@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaIdCard, FaEnvelope, FaSignOutAlt, FaShieldAlt, FaUsersCog } from "react-icons/fa";
+import { FaUser, FaIdCard, FaEnvelope, FaBuilding, FaSignOutAlt, FaShieldAlt, FaUsersCog } from "react-icons/fa";
 
 const Sidebar = ({ activePage, setActivePage, onLogout }) => {
   const navigate = useNavigate();
@@ -33,6 +33,13 @@ const Sidebar = ({ activePage, setActivePage, onLogout }) => {
           onClick={() => setActivePage("verification")}
         >
           <FaIdCard /> ID Verification
+        </li>
+
+        <li
+          className={activePage === "create-collective" ? "active" : ""}
+          onClick={() => setActivePage("create-collective")}
+        >
+          <FaBuilding /> My Collectives
         </li>
 
         <li

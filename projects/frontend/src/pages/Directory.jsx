@@ -19,35 +19,44 @@ const Directory = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch business directory listings
-      const { data: dirData } = await supabase
-        .from("directory_listings")
-        .select("*")
-        .eq("status", "approved")
-        .order("business_name", { ascending: true });
-
-      setDirectoryListings(dirData || []);
-
-      // 2. Fetch Collectives from API or Supabase
+      // 1. Fetch Collectives from Supabase or API
+      let colResults = [];
       try {
-        const res = await fetch("http://localhost:5000/api/collectives");
-        if (res.ok) {
-          const json = await res.json();
-          setCollectives(json.collectives || []);
+        const { data: colData, error: colErr } = await supabase
+          .from("collectives")
+          .select("*")
+          .eq("status", "approved")
+          .order("name", { ascending: true });
+
+        if (!colErr && colData && colData.length > 0) {
+          colResults = colData;
         } else {
-          // fallback to Supabase query if table exists
-          const { data: colData } = await supabase
-            .from("collectives")
-            .select("*")
-            .eq("status", "approved")
-            .order("name", { ascending: true });
-          setCollectives(colData || []);
+          // Fallback to API if available
+          const res = await fetch("http://localhost:5000/api/collectives");
+          if (res.ok) {
+            const json = await res.json();
+            colResults = json.collectives || [];
+          }
         }
       } catch (err) {
         console.error("Collectives fetch error:", err);
       }
+      setCollectives(colResults);
+
+      // 2. Fetch business directory listings
+      try {
+        const { data: dirData } = await supabase
+          .from("directory_listings")
+          .select("*")
+          .eq("status", "approved")
+          .order("business_name", { ascending: true });
+        setDirectoryListings(dirData || []);
+      } catch (dirErr) {
+        console.error("Directory listings fetch error:", dirErr);
+        setDirectoryListings([]);
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Fetch data error:", e);
     } finally {
       setLoading(false);
     }

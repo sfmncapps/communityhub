@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import supabase from "../config/supabaseClient";
 
 export default function CollectiveProfile() {
   const { collectiveSlug } = useParams();
@@ -16,6 +17,37 @@ export default function CollectiveProfile() {
     setLoading(true);
     setError(null);
     try {
+      // 1. Try fetching directly from Supabase collectives table
+      const { data: colData, error: colErr } = await supabase
+        .from("collectives")
+        .select("*")
+        .eq("slug", collectiveSlug)
+        .maybeSingle();
+
+      if (colData && !colErr) {
+        // Fetch collective members if table exists
+        let membersList = [];
+        try {
+          const { data: membersData } = await supabase
+            .from("collective_members")
+            .select(`
+              id, role, joined_at,
+              user:user_id(id, name, email, company_name)
+            `)
+            .eq("collective_id", colData.id);
+          membersList = membersData || [];
+        } catch (mErr) {
+          console.warn("Could not fetch collective members:", mErr);
+        }
+
+        setCollective({
+          ...colData,
+          members: membersList,
+        });
+        return;
+      }
+
+      // 2. Fallback to Express backend API endpoint
       const res = await fetch(`http://localhost:5000/api/collectives/slug/${collectiveSlug}`);
       if (!res.ok) {
         if (res.status === 404) throw new Error("Collective profile not found");
