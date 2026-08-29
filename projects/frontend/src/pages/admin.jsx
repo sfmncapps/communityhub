@@ -29,12 +29,12 @@ const AdminPage = () => {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "sans-serif" }}>
-      <Sidebar setActivePage={setActivePage} />
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
+      <Sidebar activePage={activePage} setActivePage={setActivePage} />
 
-      <div style={{ flex: 1, background: "#f4f6f9", overflowY: "auto" }}>
-        <Topbar />
-        <div style={{ padding: "20px" }}>{renderContent()}</div>
+      <div style={{ flex: 1, background: "#f8fafc", overflowY: "auto" }}>
+        <Topbar activePage={activePage} />
+        <div style={{ padding: "24px" }}>{renderContent()}</div>
       </div>
     </div>
   );

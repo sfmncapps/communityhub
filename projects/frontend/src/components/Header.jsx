@@ -178,6 +178,7 @@ const Header = () => {
             <Link to="/community" className="link">Community</Link>
             <Link to="/jobs" className="link">Jobs</Link>
             <Link to="/classifieds" className="link">Classifieds</Link>
+            <Link to="/contact" className="link">Contact Us</Link>
           </nav>
 
           {/* Desktop Login */}
@@ -208,6 +209,7 @@ const Header = () => {
         <Link to="/community" className="mobileLink" onClick={() => setMenuOpen(false)}>Community</Link>
         <Link to="/jobs" className="mobileLink" onClick={() => setMenuOpen(false)}>Jobs</Link>
         <Link to="/classifieds" className="mobileLink" onClick={() => setMenuOpen(false)}>Classifieds</Link>
+        <Link to="/contact" className="mobileLink" onClick={() => setMenuOpen(false)}>Contact Us</Link>
 
         <AuthArea mobile />
       </nav>

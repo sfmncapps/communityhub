@@ -69,6 +69,10 @@ const Footer = () => {
               <span style={s.linkIcon}><ArrowIcon /></span>
               <span>Jobs</span>
             </Link>
+            <Link to="/classifieds" style={s.linkRow}>
+              <span style={s.linkIcon}><ArrowIcon /></span>
+              <span>Classifieds</span>
+            </Link>
             <Link to="/about" style={s.linkRow}>
               <span style={s.linkIcon}><ArrowIcon /></span>
               <span>About Us</span>
@@ -83,21 +87,8 @@ const Footer = () => {
             </Link>
             <Link to="/contact" style={s.linkRow}>
               <span style={s.linkIcon}><ArrowIcon /></span>
-              <span>Contact</span>
+              <span>Contact Us</span>
             </Link>
-          </div>
-
-          <div style={s.ctaBox}>
-            <div style={s.ctaTitle}>Post something today</div>
-            <div style={s.ctaText}>
-              Post a job, list a business, or publish classifieds — admin verified.
-            </div>
-
-            <div style={s.ctaBtns}>
-              <Link to="/login" style={s.ctaPrimary}>Post a Job</Link>
-              <Link to="/login" style={s.ctaGhost}>Post Directory</Link>
-              <Link to="/login" style={s.ctaGhost2}>Post Classifieds</Link>
-            </div>
           </div>
         </div>
 
@@ -110,7 +101,7 @@ const Footer = () => {
               <span style={s.iconWrap}><PhoneIcon /></span>
               <div>
                 <div style={s.contactLabel}>Call</div>
-                <div style={s.contactValue}>+91 98765 43210</div>
+                <div style={s.contactValue}>+1 (832) 736-5643</div>
               </div>
             </div>
 
@@ -118,7 +109,7 @@ const Footer = () => {
               <span style={s.iconWrap}><MailIcon /></span>
               <div>
                 <div style={s.contactLabel}>Mail</div>
-                <div style={s.contactValue}>support@communityhub.com</div>
+                <div style={s.contactValue}>appcommunityhub@gmail.com</div>
               </div>
             </div>
 
@@ -126,7 +117,7 @@ const Footer = () => {
               <span style={s.iconWrap}><MapIcon /></span>
               <div>
                 <div style={s.contactLabel}>Location</div>
-                <div style={s.contactValue}>Hyderabad, Telangana, India</div>
+                <div style={s.contactValue}>USA</div>
               </div>
             </div>
 
@@ -396,7 +387,7 @@ const s = {
 
   linksList: {
     display: "grid",
-    gridTemplateColumns: "1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
     gap: "10px",
     marginBottom: "14px",
   },

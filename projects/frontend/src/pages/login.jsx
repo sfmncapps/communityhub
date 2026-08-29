@@ -23,6 +23,24 @@ const LoginPage = () => {
           {/* RIGHT SIDE FORM */}
           <div className="auth-right">
             <div className="auth-card">
+              {/* TOP TAB SWITCHER */}
+              <div className="auth-tabs">
+                <button
+                  type="button"
+                  className={`auth-tab ${!showRegister ? "active" : ""}`}
+                  onClick={() => setShowRegister(false)}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className={`auth-tab ${showRegister ? "active" : ""}`}
+                  onClick={() => setShowRegister(true)}
+                >
+                  Register
+                </button>
+              </div>
+
               {showRegister ? <RegisterForm /> : <LoginForm />}
 
               <p className="auth-toggle-text">
@@ -139,6 +157,34 @@ body{
   width:100%;
   max-width:380px;
   animation:slideUp .6s ease;
+}
+
+/* TAB SWITCHER */
+.auth-tabs {
+  display: flex;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.auth-tab.active {
+  background: #0f766e;
+  color: white;
+  box-shadow: 0 4px 12px rgba(15,118,110,0.25);
 }
 
 /* TOGGLE TEXT */

@@ -118,3 +118,39 @@ export const updateUserRole = async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 };
+
+// GET /api/admin/stats (Dashboard statistics for admin panel)
+export const getAdminStats = async (req, res) => {
+  try {
+    const { count: activeUsers } = await supabase
+      .from("users_active")
+      .select("*", { count: "exact", head: true });
+
+    const { count: pendingUsers } = await supabase
+      .from("users_pending")
+      .select("*", { count: "exact", head: true });
+
+    const { count: jobs } = await supabase
+      .from("jobs")
+      .select("*", { count: "exact", head: true });
+
+    const { count: directory } = await supabase
+      .from("directory_listings")
+      .select("*", { count: "exact", head: true });
+
+    const { count: classifieds } = await supabase
+      .from("classifieds")
+      .select("*", { count: "exact", head: true });
+
+    return res.json({
+      users: (activeUsers || 0) + (pendingUsers || 0),
+      active_users: activeUsers || 0,
+      pending_users: pendingUsers || 0,
+      jobs: jobs || 0,
+      directory: directory || 0,
+      classifieds: classifieds || 0,
+    });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
