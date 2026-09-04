@@ -19,7 +19,7 @@ const WelcomeOnboarding = () => {
               className="primary-btn"
               onClick={() => navigate("/login")}
             >
-              Login
+              Login / Register
             </button>
           </div>
         </div>

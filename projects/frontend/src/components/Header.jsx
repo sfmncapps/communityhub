@@ -155,7 +155,7 @@ const Header = () => {
         onClick={() => setMenuOpen(false)}
         style={{ textDecoration: "none" }}
       >
-        Login
+        Login / Register
       </Link>
     );
   };

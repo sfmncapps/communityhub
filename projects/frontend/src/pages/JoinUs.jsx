@@ -6,7 +6,7 @@ export default function JoinUs() {
     <div className="static-page">
       <div className="hero">
         <h1>Join the CommunityHub Network</h1>
-        <p>Whether you're an individual member, business owner, or collective leader, join today to unlock community features.</p>
+        <p>Whether you're an individual member, business owner, or collective leader, register today to unlock community features.</p>
       </div>
 
       <div className="content-container">
@@ -23,7 +23,7 @@ export default function JoinUs() {
               <div className="icon">🏢</div>
               <h3>Business & Enterprise</h3>
               <p>Publish directory listings, post job openings, and gain customer trust through ID document verification badges.</p>
-              <Link to="/login" className="role-btn">Join as Business</Link>
+              <Link to="/login" className="role-btn">Register Business</Link>
             </div>
 
             <div className="role-box">

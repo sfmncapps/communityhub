@@ -15,8 +15,8 @@ export default function HowItWorks() {
             <div className="step-card">
               <div className="step-num">1</div>
               <div className="step-text">
-                <h3>Account Access</h3>
-                <p>Log in securely using your email, phone, or WhatsApp OTP authentication.</p>
+                <h3>Register Account</h3>
+                <p>Sign up using your email, phone, or WhatsApp OTP authentication with fast password configuration.</p>
               </div>
             </div>
 
