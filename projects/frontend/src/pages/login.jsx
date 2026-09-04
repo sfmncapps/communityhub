@@ -1,10 +1,6 @@
-import { useState } from "react";
 import LoginForm from "../components/auth/LoginForm";
-import RegisterForm from "../components/auth/RegisterForm";
 
 const LoginPage = () => {
-  const [showRegister, setShowRegister] = useState(false);
-
   return (
     <>
       <div className="auth-wrapper">
@@ -23,34 +19,7 @@ const LoginPage = () => {
           {/* RIGHT SIDE FORM */}
           <div className="auth-right">
             <div className="auth-card">
-              {/* TOP TAB SWITCHER */}
-              <div className="auth-tabs">
-                <button
-                  type="button"
-                  className={`auth-tab ${!showRegister ? "active" : ""}`}
-                  onClick={() => setShowRegister(false)}
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  className={`auth-tab ${showRegister ? "active" : ""}`}
-                  onClick={() => setShowRegister(true)}
-                >
-                  Register
-                </button>
-              </div>
-
-              {showRegister ? <RegisterForm /> : <LoginForm />}
-
-              <p className="auth-toggle-text">
-                {showRegister
-                  ? "Already have an account?"
-                  : "Don’t have an account?"}
-                <span onClick={() => setShowRegister(!showRegister)}>
-                  {showRegister ? " Login" : " Register"}
-                </span>
-              </p>
+              <LoginForm />
             </div>
           </div>
 

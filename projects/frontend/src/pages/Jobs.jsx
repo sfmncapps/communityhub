@@ -115,7 +115,7 @@ const Jobs = () => {
           className="hero-auth-btn"
           onClick={() => navigate("/login")}
         >
-          Login / Register
+          Login
         </button>
       </div>
 

@@ -109,7 +109,7 @@ const Community = () => {
 
               <div className="cthx__heroActions">
                 <button className="cthx__btn cthx__btnPrimary" onClick={() => navigate("/login")}>
-                  Login / Register
+                  Login
                 </button>
                 <button
                   className="cthx__btn cthx__btnGhost"

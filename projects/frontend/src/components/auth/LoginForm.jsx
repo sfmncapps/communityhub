@@ -254,25 +254,7 @@ const LoginForm = () => {
           <input name="username" placeholder="Username / Email / Phone" required />
           <input name="password" type="password" placeholder="Password" required />
           <button type="submit">Login</button>
-
           <div className="alt-login">
-            <div className="otp-intent-tabs">
-              <button
-                type="button"
-                className={otpIntent === "login" ? "tab active" : "tab"}
-                onClick={() => switchOtpIntent("login")}
-              >
-                Log in with OTP
-              </button>
-              <button
-                type="button"
-                className={otpIntent === "signup" ? "tab active" : "tab"}
-                onClick={() => switchOtpIntent("signup")}
-              >
-                Sign up with OTP
-              </button>
-            </div>
-
             <div className="icon-row">
               <button type="button" className="icon-btn" onClick={loginWithGoogle}>
                 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="google"/>
@@ -299,9 +281,7 @@ const LoginForm = () => {
             {mode && (
               <div className="otp-box">
                 <div className="otp-title">
-                  {otpIntent === "login" ? "Log in with " : "Sign up with "}
-                  {mode === "email" && "Email OTP"}
-                  {mode === "phone" && "Phone OTP"}
+                  Log in with {mode === "email" ? "Email OTP" : "Phone OTP"}
                 </div>
 
                 {step === "enter" && (
