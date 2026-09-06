@@ -14,6 +14,7 @@ import {
   FaUserPlus,
   FaUsers,
   FaClock,
+  FaCompass,
 } from "react-icons/fa";
 
 const ALPHABET = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "#"];
