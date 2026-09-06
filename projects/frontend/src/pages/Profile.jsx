@@ -19,8 +19,17 @@ const Profile = () => {
   const [toast, setToast] = useState("");
 
   const [form, setForm] = useState({
+    first_name: "",
+    middle_name: "",
+    last_name: "",
     full_name: "",
     email: "",
+    phone: "",
+    street_address: "",
+    city: "",
+    state: "",
+    country: "India",
+    zip_code: "",
     company_name: "",
     company_location: "",
     company_address: "",
@@ -38,7 +47,7 @@ const Profile = () => {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 2000);
+    setTimeout(() => setToast(""), 2500);
   };
 
   const fileToBase64 = (file) =>
@@ -72,9 +81,35 @@ const Profile = () => {
         }
 
         const u = data.user || {};
+
+        // Parse legacy full name into first/middle/last if discrete fields not set
+        let fName = u.first_name || "";
+        let mName = u.middle_name || "";
+        let lName = u.last_name || "";
+
+        if (!fName && u.name) {
+          const parts = u.name.trim().split(/\s+/);
+          fName = parts[0] || "";
+          if (parts.length === 2) {
+            lName = parts[1];
+          } else if (parts.length > 2) {
+            mName = parts.slice(1, -1).join(" ");
+            lName = parts[parts.length - 1];
+          }
+        }
+
         const next = {
-          full_name: u.name || "",
+          first_name: fName,
+          middle_name: mName,
+          last_name: lName,
+          full_name: u.name || [fName, mName, lName].filter(Boolean).join(" "),
           email: u.email || "",
+          phone: u.phone || "",
+          street_address: u.street_address || u.company_address || "",
+          city: u.city || u.company_location || "",
+          state: u.state || "",
+          country: u.country || "India",
+          zip_code: u.zip_code || "",
           company_name: u.company_name || "",
           company_location: u.company_location || "",
           company_address: u.company_address || "",
@@ -127,9 +162,30 @@ const Profile = () => {
       setForm((p) => ({ ...p, company_logo: "" }));
     }
   };
-
   const saveUI = async () => {
     try {
+      // 1. Client-side Validation
+      if (!form.first_name.trim()) {
+        showToast("First name is required ⚠️");
+        return;
+      }
+      if (!form.last_name.trim()) {
+        showToast("Last name is required ⚠️");
+        return;
+      }
+      if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+        showToast("Valid email address is required ⚠️");
+        return;
+      }
+      if (form.phone && form.phone.trim() && !/^\+?[0-9\s\-()]{7,25}$/.test(form.phone.trim())) {
+        showToast("Valid phone number format required (7-25 digits) ⚠️");
+        return;
+      }
+      if (form.zip_code && form.zip_code.trim().length > 20) {
+        showToast("ZIP code cannot exceed 20 characters ⚠️");
+        return;
+      }
+
       setSaving(true);
 
       let profilePic = form.profile_pic;
@@ -138,7 +194,17 @@ const Profile = () => {
       if (profileFile) profilePic = await fileToBase64(profileFile);
       if (logoFile) companyLogo = await fileToBase64(logoFile);
 
-      const payload = { ...form, profile_pic: profilePic, company_logo: companyLogo };
+      // Auto-construct full name for backward compatibility
+      const fullName = [form.first_name.trim(), form.middle_name.trim(), form.last_name.trim()]
+        .filter(Boolean)
+        .join(" ");
+
+      const payload = {
+        ...form,
+        full_name: fullName,
+        profile_pic: profilePic,
+        company_logo: companyLogo,
+      };
 
       const token = await getAuthToken();
       if (!token) {
@@ -153,11 +219,20 @@ const Profile = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: payload.full_name,
-          email: payload.email,
-          company_name: payload.company_name,
-          company_location: payload.company_location,
-          company_address: payload.company_address,
+          first_name: payload.first_name.trim(),
+          middle_name: payload.middle_name.trim(),
+          last_name: payload.last_name.trim(),
+          name: fullName,
+          email: payload.email.trim().toLowerCase(),
+          phone: payload.phone.trim(),
+          street_address: payload.street_address.trim(),
+          city: payload.city.trim(),
+          state: payload.state.trim(),
+          country: payload.country.trim() || "India",
+          zip_code: payload.zip_code.trim(),
+          company_name: payload.company_name.trim(),
+          company_location: payload.company_location || payload.city.trim(),
+          company_address: payload.company_address || payload.street_address.trim(),
           category: payload.business_category,
           business_about: payload.business_about,
           profile_pic: payload.profile_pic,
@@ -176,7 +251,7 @@ const Profile = () => {
       setProfilePreview(profilePic || "");
       setLogoPreview(companyLogo || "");
 
-      showToast("Saved ✅");
+      showToast("Profile updated successfully! ✅");
       window.dispatchEvent(new Event("profile-updated"));
     } catch (err) {
       console.error(err);
@@ -195,16 +270,16 @@ const Profile = () => {
   return (
     <>
       {loading ? (
-        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
-          Loading your profile...
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "#64748b" }}>
+          Loading profile details...
         </div>
       ) : (
       <div className="pf4">
-        {/* Top */}
+        {/* Top Header */}
         <div className="pf4__top">
           <div>
-            <h2 className="pf4__title">Business Profile</h2>
-            <p className="pf4__sub">Enter your business details</p>
+            <h2 className="pf4__title">Member Profile & Settings</h2>
+            <p className="pf4__sub">Manage your personal identification, physical address, and community presence</p>
           </div>
 
           <div className="pf4__actions">
@@ -212,25 +287,25 @@ const Profile = () => {
               Reset
             </button>
             <button className="pf4__btn pf4__btnPrimary" onClick={saveUI} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </div>
 
         <div className="pf4__grid">
-          {/* Left */}
+          {/* Left Column: Media */}
           <div className="pf4__stack">
-            {/* Profile upload card */}
+            {/* Profile Photo */}
             <div className="pf4__card pf4__anim">
-              <div className="pf4__cardTitle">Upload Profile Photo</div>
+              <div className="pf4__cardTitle">Profile Photo (Current Photo)</div>
 
               <label className="pf4__drop">
                 {profilePreview ? (
                   <img className="pf4__dropImg" src={profilePreview} alt="Profile" />
                 ) : (
                   <div className="pf4__dropEmpty">
-                    <div className="pf4__dropIcon">⬆</div>
-                    <div className="pf4__dropText">UPLOAD</div>
+                    <div className="pf4__dropIcon">👤</div>
+                    <div className="pf4__dropText">UPLOAD PHOTO</div>
                   </div>
                 )}
                 <input
@@ -243,7 +318,7 @@ const Profile = () => {
 
               <div className="pf4__rowBtns">
                 <label className="pf4__btn pf4__btnPrimary pf4__btnSmall">
-                  Upload
+                  Upload Photo
                   <input
                     type="file"
                     accept="image/*"
@@ -263,15 +338,15 @@ const Profile = () => {
 
             {/* Logo upload card */}
             <div className="pf4__card pf4__anim">
-              <div className="pf4__cardTitle">Upload Company Logo</div>
+              <div className="pf4__cardTitle">Organization / Business Logo</div>
 
               <label className="pf4__logoDrop">
                 {logoPreview ? (
                   <img className="pf4__logoImg" src={logoPreview} alt="Company Logo" />
                 ) : (
                   <div className="pf4__logoEmpty">
-                    <div className="pf4__dropIcon">⬆</div>
-                    <div className="pf4__dropText">UPLOAD</div>
+                    <div className="pf4__dropIcon">🏢</div>
+                    <div className="pf4__logoText">UPLOAD LOGO</div>
                   </div>
                 )}
                 <input
@@ -284,7 +359,7 @@ const Profile = () => {
 
               <div className="pf4__rowBtns pf4__rowBtnsCenter">
                 <label className="pf4__btn pf4__btnPrimary pf4__btnSmall">
-                  Upload
+                  Upload Logo
                   <input
                     type="file"
                     accept="image/*"
@@ -303,50 +378,146 @@ const Profile = () => {
             </div>
           </div>
 
-          {/* Right */}
+          {/* Right Column: Structured Details */}
           <div className="pf4__card pf4__anim">
-            <div className="pf4__rightTitle">Enter Your Business Details</div>
-
             <div className="pf4__form">
-              <div className="pf4__row">
+              {/* SECTION 1: Personal Details */}
+              <div className="pf4__sectionHeader">
+                <h3>Personal Identification (RFP §7a)</h3>
+                <span>Basic contact and full legal name</span>
+              </div>
+
+              <div className="pf4__rowThree">
                 <div className="pf4__field">
-                  <label>Full Name</label>
+                  <label>First Name *</label>
                   <input
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    placeholder="Full name"
+                    value={form.first_name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const f = { ...form, first_name: val };
+                      f.full_name = [val, f.middle_name, f.last_name].filter(Boolean).join(" ");
+                      setForm(f);
+                    }}
+                    placeholder="e.g. Rahul"
+                    required
                   />
                 </div>
                 <div className="pf4__field">
-                  <label>Email</label>
+                  <label>Middle Name</label>
                   <input
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="Email"
+                    value={form.middle_name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const f = { ...form, middle_name: val };
+                      f.full_name = [f.first_name, val, f.last_name].filter(Boolean).join(" ");
+                      setForm(f);
+                    }}
+                    placeholder="e.g. Kumar"
+                  />
+                </div>
+                <div className="pf4__field">
+                  <label>Last Name *</label>
+                  <input
+                    value={form.last_name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const f = { ...form, last_name: val };
+                      f.full_name = [f.first_name, f.middle_name, val].filter(Boolean).join(" ");
+                      setForm(f);
+                    }}
+                    placeholder="e.g. Sharma"
+                    required
                   />
                 </div>
               </div>
 
               <div className="pf4__row">
                 <div className="pf4__field">
-                  <label>Company Name</label>
+                  <label>Primary Email *</label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="name@example.com"
+                    required
+                  />
+                </div>
+                <div className="pf4__field">
+                  <label>Primary Phone *</label>
+                  <input
+                    type="text"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    placeholder="+91 98765 43210"
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 2: Physical Address */}
+              <div className="pf4__sectionHeader">
+                <h3>Physical Address (RFP §7a)</h3>
+                <span>Street, city, state, country, and postal code</span>
+              </div>
+
+              <div className="pf4__field">
+                <label>Street Address</label>
+                <input
+                  value={form.street_address}
+                  onChange={(e) => setForm({ ...form, street_address: e.target.value, company_address: e.target.value })}
+                  placeholder="Flat / House No., Street, Landmark"
+                />
+              </div>
+
+              <div className="pf4__rowFour">
+                <div className="pf4__field">
+                  <label>City</label>
+                  <input
+                    value={form.city}
+                    onChange={(e) => setForm({ ...form, city: e.target.value, company_location: e.target.value })}
+                    placeholder="City"
+                  />
+                </div>
+                <div className="pf4__field">
+                  <label>State</label>
+                  <input
+                    value={form.state}
+                    onChange={(e) => setForm({ ...form, state: e.target.value })}
+                    placeholder="State"
+                  />
+                </div>
+                <div className="pf4__field">
+                  <label>Country</label>
+                  <input
+                    value={form.country}
+                    onChange={(e) => setForm({ ...form, country: e.target.value })}
+                    placeholder="Country"
+                  />
+                </div>
+                <div className="pf4__field">
+                  <label>ZIP / Postal Code</label>
+                  <input
+                    value={form.zip_code}
+                    onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
+                    placeholder="500081"
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 3: Business & Collective Info */}
+              <div className="pf4__sectionHeader">
+                <h3>Business & Professional Profile</h3>
+                <span>Details displayed across directories and collective profiles</span>
+              </div>
+
+              <div className="pf4__row">
+                <div className="pf4__field">
+                  <label>Company / Organization Name</label>
                   <input
                     value={form.company_name}
                     onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-                    placeholder="Company name"
+                    placeholder="Company or Collective name"
                   />
                 </div>
-                <div className="pf4__field">
-                  <label>Company Location</label>
-                  <input
-                    value={form.company_location}
-                    onChange={(e) => setForm({ ...form, company_location: e.target.value })}
-                    placeholder="City, State"
-                  />
-                </div>
-              </div>
-
-              <div className="pf4__row">
                 <div className="pf4__field">
                   <label>Business Category</label>
                   <select
@@ -354,41 +525,35 @@ const Profile = () => {
                     onChange={(e) => setForm({ ...form, business_category: e.target.value })}
                   >
                     <option value="">Select category</option>
-                    <option value="Interior & Design">Interior & Design</option>
-                    <option value="Construction">Construction</option>
                     <option value="IT Services">IT Services</option>
-                    <option value="Education">Education</option>
+                    <option value="Food & Dining">Food & Dining</option>
                     <option value="Healthcare">Healthcare</option>
+                    <option value="Education">Education</option>
+                    <option value="Community Welfare">Community Welfare</option>
+                    <option value="Construction">Construction</option>
+                    <option value="Interior & Design">Interior & Design</option>
                     <option value="E-commerce">E-commerce</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
-                <div className="pf4__field">
-                  <label>Brand Tagline</label>
-                  <input
-                    value={form.brand_tagline}
-                    onChange={(e) => setForm({ ...form, brand_tagline: e.target.value })}
-                    placeholder="Your tagline"
-                  />
-                </div>
               </div>
 
-              {/* ✅ Company Address only ONCE */}
               <div className="pf4__field">
-                <label>Company Address</label>
-                <textarea
-                  value={form.company_address}
-                  onChange={(e) => setForm({ ...form, company_address: e.target.value })}
-                  placeholder="Address"
+                <label>Brand Tagline</label>
+                <input
+                  value={form.brand_tagline}
+                  onChange={(e) => setForm({ ...form, brand_tagline: e.target.value })}
+                  placeholder="Short one-line headline or motto"
                 />
               </div>
 
               <div className="pf4__field">
-                <label>About Your Business</label>
+                <label>About / Bio</label>
                 <textarea
+                  rows="3"
                   value={form.business_about}
                   onChange={(e) => setForm({ ...form, business_about: e.target.value })}
-                  placeholder="Write about your business..."
+                  placeholder="Briefly describe your background, business services, or community mission..."
                 />
                 <div className="pf4__counter">{(form.business_about || "").length}/400</div>
               </div>
@@ -398,7 +563,7 @@ const Profile = () => {
                   Reset
                 </button>
                 <button className="pf4__btn pf4__btnPrimary" onClick={saveUI} disabled={saving}>
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? "Saving Changes..." : "Save Profile"}
                 </button>
               </div>
             </div>
@@ -667,9 +832,41 @@ const Profile = () => {
           to{ opacity:1; transform: translateY(0); }
         }
 
+        .pf4__sectionHeader {
+          margin: 18px 0 12px 0;
+          padding-bottom: 6px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .pf4__sectionHeader h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+        .pf4__sectionHeader span {
+          display: block;
+          font-size: 12px;
+          color: #64748b;
+          margin-top: 2px;
+        }
+
+        .pf4__rowThree {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 12px;
+        }
+
+        .pf4__rowFour {
+          display: grid;
+          grid-template-columns: 2fr 1fr 1fr 1fr;
+          gap: 12px;
+        }
+
         @media (max-width: 980px){
           .pf4__grid{ grid-template-columns: 1fr; }
           .pf4__row{ grid-template-columns: 1fr; }
+          .pf4__rowThree{ grid-template-columns: 1fr; }
+          .pf4__rowFour{ grid-template-columns: 1fr; }
         }
       `}</style>
     </>

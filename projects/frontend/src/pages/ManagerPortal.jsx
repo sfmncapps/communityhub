@@ -32,12 +32,14 @@ export default function ManagerPortal() {
     address: "",
     city: "",
     state: "",
+    country: "India",
     zip: "",
     website: "",
     contact_email: "",
     contact_phone: "",
     logo_url: "",
     banner_url: "",
+    partners: "",
   });
 
   // Member Form State
@@ -105,12 +107,14 @@ export default function ManagerPortal() {
       address: col.address || "",
       city: col.city || "",
       state: col.state || "",
+      country: col.country || "India",
       zip: col.zip || "",
       website: col.website || "",
       contact_email: col.contact_email || "",
       contact_phone: col.contact_phone || "",
       logo_url: col.logo_url || "",
       banner_url: col.banner_url || "",
+      partners: Array.isArray(col.partners) ? col.partners.join(", ") : (col.partners || ""),
     });
   };
 
@@ -131,13 +135,19 @@ export default function ManagerPortal() {
 
     try {
       const token = getToken();
+      const payload = {
+        ...editForm,
+        partners: editForm.partners
+          ? editForm.partners.split(",").map((p) => p.trim()).filter(Boolean)
+          : [],
+      };
       const res = await fetch(`${API}/collectives/${selectedCol.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -400,6 +410,10 @@ export default function ManagerPortal() {
                 <div className="info-card">
                   <h3>Collective Information</h3>
                   <div className="info-item">
+                    <label>Primary Owner:</label>
+                    <p>{selectedCol.owner?.name || selectedCol.owner?.email || "Manager (You)"}</p>
+                  </div>
+                  <div className="info-item">
                     <label>Description:</label>
                     <p>{selectedCol.description || "No description provided."}</p>
                   </div>
@@ -412,13 +426,19 @@ export default function ManagerPortal() {
                     <p>{selectedCol.address || "Not specified"}</p>
                   </div>
                   <div className="info-item">
-                    <label>City, State, ZIP:</label>
+                    <label>Location & Postal Code:</label>
                     <p>
-                      {[selectedCol.city, selectedCol.state, selectedCol.zip]
+                      {[selectedCol.city, selectedCol.state, selectedCol.country, selectedCol.zip]
                         .filter(Boolean)
                         .join(", ") || "Not specified"}
                     </p>
                   </div>
+                  {selectedCol.partners && (Array.isArray(selectedCol.partners) ? selectedCol.partners.length > 0 : Boolean(selectedCol.partners)) && (
+                    <div className="info-item">
+                      <label>Partners / Affiliates:</label>
+                      <p>{Array.isArray(selectedCol.partners) ? selectedCol.partners.join(", ") : selectedCol.partners}</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="info-card">
@@ -535,11 +555,30 @@ export default function ManagerPortal() {
                   </div>
 
                   <div className="form-group">
+                    <label>Country</label>
+                    <input
+                      type="text"
+                      value={editForm.country}
+                      onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
                     <label>ZIP Code</label>
                     <input
                       type="text"
                       value={editForm.zip}
                       onChange={(e) => setEditForm({ ...editForm, zip: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group full-width">
+                    <label>Partners / Affiliates (Comma-separated)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Partner NGO, Global Foundation, Tech Alliance"
+                      value={editForm.partners}
+                      onChange={(e) => setEditForm({ ...editForm, partners: e.target.value })}
                     />
                   </div>
 

@@ -155,20 +155,42 @@ export const createCollective = async (req, res) => {
     const {
       name,
       description,
+      category,
+      type,
       logo_url,
       banner_url,
       partners,
       address,
       city,
       state,
+      country,
       zip,
       website,
       contact_email,
       contact_phone,
     } = req.body;
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return res.status(400).json({ message: "Collective name is required" });
+    }
+
+    if (name.trim().length > 255) {
+      return res.status(400).json({ message: "Collective name cannot exceed 255 characters" });
+    }
+
+    // Email validation
+    if (contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact_email.trim())) {
+      return res.status(400).json({ message: "Invalid contact email address format" });
+    }
+
+    // Phone validation
+    if (contact_phone && !/^\+?[0-9\s\-()]{7,25}$/.test(contact_phone.trim())) {
+      return res.status(400).json({ message: "Invalid contact phone number format" });
+    }
+
+    // ZIP validation
+    if (zip && zip.trim().length > 20) {
+      return res.status(400).json({ message: "ZIP code cannot exceed 20 characters" });
     }
 
     const userRole = (req.activeUser.role || "user").toLowerCase();
@@ -177,40 +199,72 @@ export const createCollective = async (req, res) => {
 
     const slug = await getUniqueSlug(name);
 
-    const { data: newCollective, error } = await supabase
+    const payload = {
+      name: name.trim(),
+      slug,
+      type: type || "business",
+      category: category || "General",
+      description: description || "",
+      logo_url: logo_url || "",
+      banner_url: banner_url || "",
+      owner_id: req.activeUser.id,
+      partners: Array.isArray(partners) ? partners : [],
+      address: address || "",
+      city: city || "",
+      state: state || "",
+      country: country || "India",
+      zip: zip || "",
+      website: website || "",
+      contact_email: contact_email || req.activeUser.email || "",
+      contact_phone: contact_phone || req.activeUser.phone || "",
+      status: initialStatus,
+    };
+
+    let { data: newCollective, error } = await supabase
       .from("collectives")
-      .insert([
-        {
-          name,
-          slug,
-          description: description || "",
-          logo_url: logo_url || "",
-          banner_url: banner_url || "",
-          owner_id: req.activeUser.id,
-          partners: Array.isArray(partners) ? partners : [],
-          address: address || "",
-          city: city || "",
-          state: state || "",
-          zip: zip || "",
-          website: website || "",
-          contact_email: contact_email || req.activeUser.email || "",
-          contact_phone: contact_phone || req.activeUser.phone || "",
-          status: initialStatus,
-        },
-      ])
+      .insert([payload])
       .select()
       .single();
 
-    if (error) return res.status(500).json({ message: error.message });
+    // Fallback if schema cache is missing newly migrated columns
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      const corePayload = {
+        name: name.trim(),
+        slug,
+        type: type || "business",
+        category: category || "General",
+        description: description || "",
+        city: city || "",
+        state: state || "",
+        country: country || "India",
+        phone: contact_phone || "",
+        website: website || "",
+        status: initialStatus,
+      };
+      const retry = await supabase
+        .from("collectives")
+        .insert([corePayload])
+        .select()
+        .single();
 
-    // Automatically add owner to collective_members
-    await supabase.from("collective_members").insert([
-      {
-        collective_id: newCollective.id,
-        user_id: req.activeUser.id,
-        role: "owner",
-      },
-    ]);
+      if (retry.error) return res.status(500).json({ message: retry.error.message });
+      newCollective = { ...retry.data, ...payload };
+    } else if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
+    // Try adding owner to collective_members if table exists
+    try {
+      await supabase.from("collective_members").insert([
+        {
+          collective_id: newCollective.id,
+          user_id: req.activeUser.id,
+          role: "owner",
+        },
+      ]);
+    } catch {
+      // Table may not exist yet
+    }
 
     const msg =
       initialStatus === "approved"
@@ -243,9 +297,25 @@ export const updateCollective = async (req, res) => {
       return res.status(403).json({ message: "Not authorized to edit this collective" });
     }
 
+    // Validations
+    if (req.body.name && req.body.name.trim().length > 255) {
+      return res.status(400).json({ message: "Collective name cannot exceed 255 characters" });
+    }
+    if (req.body.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contact_email.trim())) {
+      return res.status(400).json({ message: "Invalid contact email address format" });
+    }
+    if (req.body.contact_phone && !/^\+?[0-9\s\-()]{7,25}$/.test(req.body.contact_phone.trim())) {
+      return res.status(400).json({ message: "Invalid contact phone number format" });
+    }
+    if (req.body.zip && req.body.zip.trim().length > 20) {
+      return res.status(400).json({ message: "ZIP code cannot exceed 20 characters" });
+    }
+
     const updates = { updated_at: new Date().toISOString() };
     const fields = [
       "name",
+      "category",
+      "type",
       "description",
       "logo_url",
       "banner_url",
@@ -253,6 +323,7 @@ export const updateCollective = async (req, res) => {
       "address",
       "city",
       "state",
+      "country",
       "zip",
       "website",
       "contact_email",
@@ -263,14 +334,33 @@ export const updateCollective = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    const { data: updated, error } = await supabase
+    let { data: updated, error } = await supabase
       .from("collectives")
       .update(updates)
       .eq("id", id)
       .select()
       .single();
 
-    if (error) return res.status(500).json({ message: error.message });
+    // Fallback if any new column is missing in schema cache
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      const coreUpdates = {};
+      const coreFields = ["name", "category", "type", "description", "city", "state", "country", "website"];
+      for (const f of coreFields) {
+        if (updates[f] !== undefined) coreUpdates[f] = updates[f];
+      }
+      const retry = await supabase
+        .from("collectives")
+        .update(coreUpdates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (retry.error) return res.status(500).json({ message: retry.error.message });
+      updated = { ...retry.data, ...updates };
+    } else if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
     return res.json({ message: "Collective updated successfully", collective: updated });
   } catch (e) {
     return res.status(500).json({ message: e.message });

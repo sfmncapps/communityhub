@@ -475,14 +475,50 @@ export const manualRegister = async (req, res) => {
 // ============================================================
 
 export const getMyProfile = async (req, res) => {
-  // requireUser already fetched the row — just strip the password hash.
   const { password, ...safeUser } = req.activeUser;
+
+  // Synthesize discrete name parts if legacy record only has 'name'
+  if (!safeUser.first_name && safeUser.name) {
+    const tokens = safeUser.name.trim().split(/\s+/);
+    safeUser.first_name = tokens[0] || "";
+    if (tokens.length === 2) {
+      safeUser.last_name = tokens[1];
+      safeUser.middle_name = "";
+    } else if (tokens.length > 2) {
+      safeUser.middle_name = tokens.slice(1, -1).join(" ");
+      safeUser.last_name = tokens[tokens.length - 1];
+    } else {
+      safeUser.middle_name = "";
+      safeUser.last_name = "";
+    }
+  }
+
+  // Synthesize address if legacy record only has 'company_address' / 'company_location'
+  if (!safeUser.street_address && safeUser.company_address) {
+    safeUser.street_address = safeUser.company_address;
+  }
+  if (!safeUser.city && safeUser.company_location) {
+    safeUser.city = safeUser.company_location;
+  }
+  if (!safeUser.country) {
+    safeUser.country = "India";
+  }
+
   return res.json({ user: safeUser });
 };
 
 const PROFILE_EDITABLE_FIELDS = [
   "name",
+  "first_name",
+  "middle_name",
+  "last_name",
   "email",
+  "phone",
+  "street_address",
+  "city",
+  "state",
+  "country",
+  "zip_code",
   "company_name",
   "company_location",
   "category",
@@ -496,25 +532,115 @@ const PROFILE_EDITABLE_FIELDS = [
 export const updateMyProfile = async (req, res) => {
   try {
     const updates = {};
-    for (const field of PROFILE_EDITABLE_FIELDS) {
+
+    // 1. Validation checks
+    if (req.body.email) {
+      const emailStr = String(req.body.email).trim();
+      if (emailStr.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+        return res.status(400).json({ message: "Invalid email address format" });
+      }
+      updates.email = emailStr.toLowerCase();
+    }
+
+    if (req.body.phone) {
+      const phoneStr = String(req.body.phone).trim();
+      if (phoneStr.length < 7 || phoneStr.length > 20 || !/^\+?[0-9\s\-()]+$/.test(phoneStr)) {
+        return res.status(400).json({ message: "Invalid phone number format" });
+      }
+      updates.phone = phoneStr;
+    }
+
+    if (req.body.zip_code) {
+      const zipStr = String(req.body.zip_code).trim();
+      if (zipStr.length > 20 || !/^[a-zA-Z0-9\s\-]+$/.test(zipStr)) {
+        return res.status(400).json({ message: "Invalid ZIP / Postal code format" });
+      }
+      updates.zip_code = zipStr;
+    }
+
+    // Length restrictions
+    const lengthLimits = {
+      first_name: 100,
+      middle_name: 100,
+      last_name: 100,
+      city: 100,
+      state: 100,
+      country: 100,
+      street_address: 500,
+      company_name: 255,
+    };
+
+    for (const [key, maxLen] of Object.entries(lengthLimits)) {
+      if (req.body[key] !== undefined) {
+        const val = String(req.body[key]).trim();
+        if (val.length > maxLen) {
+          return res.status(400).json({ message: `${key} exceeds maximum length of ${maxLen} characters` });
+        }
+        updates[key] = val;
+      }
+    }
+
+    // Standard fields
+    for (const field of ["category", "company_location", "company_address", "business_about", "profile_pic", "company_logo", "brand_tagline"]) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
+    // 2. Backward compatibility: Synchronize full 'name' from discrete parts
+    const fName = updates.first_name !== undefined ? updates.first_name : (req.activeUser.first_name || "");
+    const mName = updates.middle_name !== undefined ? updates.middle_name : (req.activeUser.middle_name || "");
+    const lName = updates.last_name !== undefined ? updates.last_name : (req.activeUser.last_name || "");
+    const nameParts = [fName, mName, lName].filter(Boolean);
+    if (nameParts.length > 0) {
+      updates.name = nameParts.join(" ");
+    }
+
+    // Sync address fields to legacy columns
+    if (updates.street_address && !updates.company_address) {
+      updates.company_address = updates.street_address;
+    }
+    if (updates.city && !updates.company_location) {
+      updates.company_location = updates.state ? `${updates.city}, ${updates.state}` : updates.city;
     }
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
-    const { data, error } = await supabase
+    // 3. Attempt update in database
+    let { data, error } = await supabase
       .from("users_active")
       .update(updates)
       .eq("id", req.activeUser.id)
       .select()
       .maybeSingle();
 
-    if (error) return res.status(500).json({ message: error.message });
+    // Graceful fallback: If Supabase schema cache hasn't loaded discrete columns yet (PGRST204)
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      const coreUpdates = {};
+      const coreFields = [
+        "name", "email", "phone", "company_name", "company_location",
+        "company_address", "category", "business_about", "profile_pic",
+        "company_logo", "brand_tagline"
+      ];
+      for (const f of coreFields) {
+        if (updates[f] !== undefined) coreUpdates[f] = updates[f];
+      }
+
+      const retry = await supabase
+        .from("users_active")
+        .update(coreUpdates)
+        .eq("id", req.activeUser.id)
+        .select()
+        .maybeSingle();
+
+      if (retry.error) return res.status(500).json({ message: retry.error.message });
+      data = { ...retry.data, ...updates };
+    } else if (error) {
+      return res.status(500).json({ message: error.message });
+    }
 
     const { password, ...safeUser } = data;
-    return res.json({ message: "Profile updated", user: safeUser });
+    return res.json({ message: "Profile updated successfully", user: safeUser });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
