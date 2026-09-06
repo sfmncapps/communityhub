@@ -1,16 +1,27 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import supabase from "../config/supabaseClient";
 
 const ALPHABET = ["All", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "#"];
 
 const Directory = () => {
+  const [searchParams] = useSearchParams();
+  const initialLetter = searchParams.get("letter") || "All";
+  const initialSearch = searchParams.get("search") || searchParams.get("q") || "";
+
   const [activeTab, setActiveTab] = useState("all"); // 'all', 'directory', 'collectives'
-  const [selectedLetter, setSelectedLetter] = useState("All");
-  const [search, setSearch] = useState("");
+  const [selectedLetter, setSelectedLetter] = useState(initialLetter);
+  const [search, setSearch] = useState(initialSearch);
   const [directoryListings, setDirectoryListings] = useState([]);
   const [collectives, setCollectives] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const l = searchParams.get("letter");
+    if (l) setSelectedLetter(l);
+    const q = searchParams.get("search") || searchParams.get("q");
+    if (q !== null && q !== undefined) setSearch(q);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchData();
