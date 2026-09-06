@@ -10,6 +10,8 @@ import {
   approveCollective,
   rejectCollective,
   deleteCollective,
+  verifyCollectiveStateRecord,
+  getCollectiveVerification,
   addCollectiveMember,
   removeCollectiveMember,
 } from "../controllers/collectiveController.js";
@@ -44,9 +46,11 @@ router.delete("/:id", requireUser, requireCollectiveManager, deleteCollective);
 router.post("/:id/members", requireUser, requireCollectiveManager, addCollectiveMember);
 router.delete("/:id/members/:userId", requireUser, requireCollectiveManager, removeCollectiveMember);
 
-// Admin / Superadmin routes
+// Admin / Superadmin routes (Strict RBAC: Managers blocked)
 router.get("/admin/pending", requireUser, requireRole(["admin", "superadmin"], { strict: true }), getPendingCollectives);
 router.post("/:id/approve", requireUser, requireRole(["admin", "superadmin"], { strict: true }), approveCollective);
 router.post("/:id/reject", requireUser, requireRole(["admin", "superadmin"], { strict: true }), rejectCollective);
+router.post("/:id/verify-state", requireUser, requireRole(["admin", "superadmin"], { strict: true }), verifyCollectiveStateRecord);
+router.get("/:id/verification", requireUser, requireRole(["admin", "superadmin"], { strict: true }), getCollectiveVerification);
 
 export default router;

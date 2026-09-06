@@ -154,7 +154,14 @@ const Directory = () => {
                       </div>
                       <div className="cardTop">
                         <h3 className="title">{col.name}</h3>
-                        <span className="badge collective-badge">Collective</span>
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                          <span className="badge collective-badge">Collective</span>
+                          {col.verification_status === "verified" && (
+                            <span className="badge state-verified-badge" title="State Record Verified">
+                              🛡️ Verified
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="info">
                         <p className="description">{col.description ? col.description.slice(0, 90) + "..." : "Community Collective profile"}</p>
@@ -434,6 +441,12 @@ const Directory = () => {
         .collective-badge {
           background: #fef3c7;
           color: #b45309;
+        }
+
+        .state-verified-badge {
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-weight: 700;
         }
 
         .info p {

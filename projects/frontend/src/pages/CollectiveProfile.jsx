@@ -144,11 +144,19 @@ export default function CollectiveProfile() {
           <div className="banner-info">
             <div className="badge-row">
               <span className="collective-tag">Collective Profile</span>
-              {collective.status === "approved" && <span className="verified-tag">✓ Verified Profile</span>}
+              {collective.status === "approved" && <span className="verified-tag">✓ Approved</span>}
+              {collective.verification_status === "verified" && (
+                <span
+                  className="state-verified-tag"
+                  title={collective.state_record_notes || "Verified against official State / Corporate Registry"}
+                >
+                  🛡️ State Verified {collective.state_record_id ? `(#${collective.state_record_id})` : ""}
+                </span>
+              )}
             </div>
             <h1>{collective.name}</h1>
             <p className="location-text">
-              📍 {[collective.address, collective.city, collective.state, collective.zip].filter(Boolean).join(", ") || "Community Collective"}
+              📍 {[collective.address, collective.city, collective.state, collective.country, collective.zip].filter(Boolean).join(", ") || "Community Collective"}
             </p>
           </div>
           <div className="banner-actions">
@@ -319,6 +327,19 @@ export default function CollectiveProfile() {
           padding: 4px 10px;
           border-radius: 20px;
           font-weight: 700;
+        }
+
+        .state-verified-tag {
+          background: linear-gradient(135deg, #0284c7, #0369a1);
+          color: white;
+          font-size: 12px;
+          padding: 4px 12px;
+          border-radius: 20px;
+          font-weight: 800;
+          box-shadow: 0 2px 8px rgba(3, 105, 161, 0.35);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
         }
 
         .banner-info h1 {

@@ -403,6 +403,128 @@ export const rejectCollective = async (req, res) => {
   }
 };
 
+// POST /api/collectives/:id/verify-state (Admin & Superadmin: verify collective against state records)
+export const verifyCollectiveStateRecord = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      state_record_id,
+      state_record_notes,
+      verification_status = "verified",
+      auto_approve = true,
+    } = req.body;
+
+    const validStatuses = ["verified", "rejected", "unverified"];
+    if (!validStatuses.includes(verification_status)) {
+      return res.status(400).json({ message: `Verification status must be one of: ${validStatuses.join(", ")}` });
+    }
+
+    if (verification_status === "verified" && (!state_record_id || !state_record_id.trim())) {
+      return res.status(400).json({ message: "State registration / corporate ID is required for verification" });
+    }
+
+    if (state_record_id && state_record_id.trim().length > 100) {
+      return res.status(400).json({ message: "State record ID cannot exceed 100 characters" });
+    }
+
+    if (state_record_notes && state_record_notes.trim().length > 1000) {
+      return res.status(400).json({ message: "State record notes cannot exceed 1000 characters" });
+    }
+
+    const updates = {
+      state_record_id: state_record_id ? state_record_id.trim() : null,
+      state_record_notes: state_record_notes ? state_record_notes.trim() : null,
+      verified_by: req.activeUser.id,
+      verified_at: new Date().toISOString(),
+      verification_status,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (verification_status === "verified" && auto_approve) {
+      updates.status = "approved";
+    } else if (verification_status === "rejected") {
+      updates.status = "rejected";
+    }
+
+    let { data, error } = await supabase
+      .from("collectives")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    // Fallback if schema cache does not yet have newly added state_record columns
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      const fallbackUpdates = { updated_at: new Date().toISOString() };
+      if (updates.status) fallbackUpdates.status = updates.status;
+
+      const retry = await supabase
+        .from("collectives")
+        .update(fallbackUpdates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (retry.error) return res.status(500).json({ message: retry.error.message });
+      data = { ...retry.data, ...updates };
+    } else if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
+    return res.json({
+      message: `Collective state record ${verification_status === "verified" ? "verified and approved" : "updated"} successfully`,
+      collective: data,
+    });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// GET /api/collectives/:id/verification (Admin & Superadmin: get verification audit)
+export const getCollectiveVerification = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: col, error } = await supabase
+      .from("collectives")
+      .select(`
+        id, name, slug, status, verification_status,
+        state_record_id, state_record_notes, verified_at,
+        verifier:verified_by(id, name, email)
+      `)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      // Fallback query if audit columns not in cache yet
+      const { data: basic } = await supabase
+        .from("collectives")
+        .select("id, name, slug, status")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!basic) return res.status(404).json({ message: "Collective not found" });
+      return res.json({
+        verification: {
+          ...basic,
+          verification_status: "unverified",
+          state_record_id: null,
+          state_record_notes: null,
+          verified_at: null,
+          verifier: null,
+        },
+      });
+    }
+
+    if (error) return res.status(500).json({ message: error.message });
+    if (!col) return res.status(404).json({ message: "Collective not found" });
+
+    return res.json({ verification: col });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
 // DELETE /api/collectives/:id
 export const deleteCollective = async (req, res) => {
   try {
