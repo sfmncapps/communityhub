@@ -16,6 +16,8 @@ const DashboardStats = () => {
     jobs: 0,
     directory: 0,
     classifieds: 0,
+    events: 0,
+    pending_events: 0,
   });
 
   useEffect(() => {
@@ -33,6 +35,8 @@ const DashboardStats = () => {
             jobs: data.jobs || 0,
             directory: data.directory || 0,
             classifieds: data.classifieds || 0,
+            events: data.events || 0,
+            pending_events: data.pending_events || 0,
           });
           return;
         }
@@ -61,11 +65,24 @@ const DashboardStats = () => {
         .from("classifieds")
         .select("*", { count: "exact", head: true });
 
+      let eventsCount = 0;
+      let pendingEvCount = 0;
+      try {
+        const { count: evs } = await supabase.from("events").select("*", { count: "exact", head: true });
+        eventsCount = evs || 0;
+        const { count: pev } = await supabase.from("events").select("*", { count: "exact", head: true }).eq("status", "pending");
+        pendingEvCount = pev || 0;
+      } catch {
+        // Table may be empty
+      }
+
       setStats({
         users: (activeUsers || 0) + (pendingUsers || 0),
         jobs: jobs || 0,
         directory: directory || 0,
         classifieds: classifieds || 0,
+        events: eventsCount,
+        pending_events: pendingEvCount,
       });
     };
 
@@ -79,6 +96,7 @@ const DashboardStats = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, () => fetchStats())
       .on("postgres_changes", { event: "*", schema: "public", table: "directory_listings" }, () => fetchStats())
       .on("postgres_changes", { event: "*", schema: "public", table: "classifieds" }, () => fetchStats())
+      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, () => fetchStats())
       .subscribe();
 
     // 2. Interval polling fallback every 10 seconds
@@ -92,6 +110,7 @@ const DashboardStats = () => {
 
   const cards = [
     { title: "Total Users", value: stats.users, icon: "👥", color: "#0f766e", bg: "#f0fdf4", sub: "Registered & Pending" },
+    { title: "Community Events", value: stats.events, icon: "📅", color: "#059669", bg: "#ecfdf5", sub: stats.pending_events > 0 ? `${stats.pending_events} pending approval` : "Active & Scheduled" },
     { title: "Jobs Posted", value: stats.jobs, icon: "💼", color: "#2563eb", bg: "#eff6ff", sub: "Approved & Pending" },
     { title: "Directory Listings", value: stats.directory, icon: "🏢", color: "#7c3aed", bg: "#f5f3ff", sub: "Business Collectives" },
     { title: "Classified Items", value: stats.classifieds, icon: "🛒", color: "#d97706", bg: "#fffbeb", sub: "Community Marketplace" },

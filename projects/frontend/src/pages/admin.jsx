@@ -7,6 +7,7 @@ import ManageJobs from "../components/admin/ManageJobs";
 import ManageDirectory from "../components/admin/ManageDirectory";
 import ManageClassifieds from "../components/admin/ManageClassifieds";
 import ManageVerifications from "../components/admin/ManageVerifications";
+import ManageEvents from "../components/admin/ManageEvents";
 
 const AdminPage = () => {
   const [activePage, setActivePage] = useState("dashboard");
@@ -17,6 +18,8 @@ const AdminPage = () => {
         return <ManageVerifications />;
       case "users":
         return <PendingUsers />;
+      case "events":
+        return <ManageEvents />;
       case "jobs":
         return <ManageJobs />;
       case "directory":

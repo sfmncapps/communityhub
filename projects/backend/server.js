@@ -15,6 +15,7 @@ import myListingsRoutes from "./src/routes/myListingsRoutes.js";
 import collectiveRoutes from "./src/routes/collectiveRoutes.js";
 import verificationRoutes from "./src/routes/verificationRoutes.js";
 import messageRoutes from "./src/routes/messageRoutes.js";
+import eventRoutes from "./src/routes/eventRoutes.js";
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use("/api/my", myListingsRoutes);
 app.use("/api/collectives", collectiveRoutes);
 app.use("/api/verification", verificationRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/events", eventRoutes);
 
 const PORT = process.env.PORT || 5000;
 

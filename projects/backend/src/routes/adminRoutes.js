@@ -5,6 +5,9 @@ import {
   getAllUsers,
   updateUserRole,
   getAdminStats,
+  getAdminEvents,
+  updateEventStatus,
+  deleteEvent,
 } from "../controllers/adminController.js";
 import { requireUser } from "../middleware/requireUser.js";
 import { requireRole, requireExactRole } from "../middleware/requireRole.js";
@@ -19,6 +22,11 @@ router.get("/stats", getAdminStats);
 router.get("/pending-users", getPendingUsers);
 router.post("/approve-user", sendApproval);
 router.get("/users", getAllUsers);
+
+// Events Moderation
+router.get("/events", getAdminEvents);
+router.put("/events/:id/status", updateEventStatus);
+router.delete("/events/:id", deleteEvent);
 
 // Only superadmin can promote/demote roles; admins get 403
 router.put("/users/:id/role", requireExactRole(["superadmin"]), updateUserRole);

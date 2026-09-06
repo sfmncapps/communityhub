@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import supabase from "../config/supabaseClient";
 
 import Sidebar from "./Sidebar";
@@ -7,12 +7,25 @@ import Profile from "./Profile";
 import VerificationUpload from "../components/user/VerificationUpload";
 import CreateCollective from "../components/user/CreateCollective";
 import MessagingCenter from "./MessagingCenter";
+import MyEvents from "./MyEvents";
 
 import "./dashboard.css";
 
 const Dashboard = () => {
-  const [activePage, setActivePage] = useState("profile");
+  const location = useLocation();
+  const [activePage, setActivePage] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tab") || "profile";
+  });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get("tab");
+    if (tab && tab !== activePage) {
+      setActivePage(tab);
+    }
+  }, [location.search]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -27,6 +40,8 @@ const Dashboard = () => {
         return <VerificationUpload />;
       case "create-collective":
         return <CreateCollective />;
+      case "my-events":
+        return <MyEvents />;
       case "messages":
         return <MessagingCenter />;
       default:

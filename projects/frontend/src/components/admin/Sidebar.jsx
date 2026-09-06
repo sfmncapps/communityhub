@@ -7,6 +7,7 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
     { id: "dashboard", label: "Dashboard Overview", icon: "📊" },
     { id: "verifications", label: "ID Verifications", icon: "🆔" },
     { id: "users", label: "Users & RBAC", icon: "👥" },
+    { id: "events", label: "Events Moderation", icon: "📅" },
     { id: "jobs", label: "Jobs Moderation", icon: "💼" },
     { id: "directory", label: "Directory Listings", icon: "🏢" },
     { id: "classifieds", label: "Classifieds", icon: "🛒" },

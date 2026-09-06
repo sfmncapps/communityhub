@@ -9,6 +9,7 @@ import Welcome from "../pages/Welcome";
 import Community from "../pages/Community";
 import Directory from "../pages/Directory";
 import Events from "../pages/Events";
+import EventDetails from "../pages/EventDetails";
 import About from "../pages/About";
 import Contact from "../pages/Contact";
 import HowItWorks from "../pages/HowItWorks";
@@ -36,7 +37,9 @@ const AppRoutes = () => {
         <Route path="/" element={<Home />} />
         <Route path="/welcome" element={<Welcome />} />
         <Route path="/events" element={<Events />} />
+        <Route path="/events/:id" element={<EventDetails />} />
         <Route path="/event" element={<Events />} />
+        <Route path="/event/:id" element={<EventDetails />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
