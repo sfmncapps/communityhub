@@ -113,29 +113,26 @@ const LoginForm = () => {
   };
 
   /* MICROSOFT (Azure AD / Outlook) */
-  const handleMicrosoftLogin = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "azure",
-        options: { scopes: "email profile openid" },
-      });
-      if (error) throw error;
-    } catch (err) {
-      setError(err.message || "Failed to initialize Microsoft login.");
-    }
+  const loginWithMicrosoft = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        scopes: "email profile openid",
+      },
+    });
+    if (error) alert(error.message);
   };
 
   /* FACEBOOK */
-  const handleFacebookLogin = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "facebook",
-        options: { scopes: "email,public_profile" },
-      });
-      if (error) throw error;
-    } catch (err) {
-      setError(err.message || "Failed to initialize Facebook login.");
-    }
+  const loginWithFacebook = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "facebook",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+      },
+    });
+    if (error) alert(error.message);
   };
 
   /* TWITTER / X */
