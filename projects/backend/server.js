@@ -16,6 +16,7 @@ import collectiveRoutes from "./src/routes/collectiveRoutes.js";
 import verificationRoutes from "./src/routes/verificationRoutes.js";
 import messageRoutes from "./src/routes/messageRoutes.js";
 import eventRoutes from "./src/routes/eventRoutes.js";
+import settingsRoutes from "./src/routes/settingsRoutes.js";
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/collectives", collectiveRoutes);
 app.use("/api/verification", verificationRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/events", eventRoutes);
+app.use("/api/settings", settingsRoutes);
 
 const PORT = process.env.PORT || 5000;
 

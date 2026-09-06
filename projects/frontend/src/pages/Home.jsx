@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useTheme } from "../context/ThemeContext";
 
 export default function Home() {
+  const { homepageWidgets } = useTheme();
   const [contactSent, setContactSent] = useState(false);
 
   return (
@@ -15,7 +17,7 @@ export default function Home() {
 
         /* HERO */
         .hero {
-          background: linear-gradient(135deg, #0f766e, #16a34a);
+          background: var(--theme-banner-gradient, linear-gradient(135deg, #0f766e, #16a34a));
           color: #fff;
           padding: 90px 0px 50px 70px;
           text-align: left;
@@ -455,149 +457,132 @@ export default function Home() {
         }
       `}</style>
 
-      {/* HERO */}
-      <section className="hero">
-        <h3>Community Hub</h3>
-        <h1>Your Gateway to Trusted Businesses, Jobs & Community Resources</h1>
-        <p>
-          A secure community platform with self-registration, admin approval,
-          directories, jobs, and classifieds — designed for speed and simplicity.
-        </p>
+      {/* HOMEPAGE DYNAMIC WIDGETS (RFP §4f) */}
+      {(() => {
+        const activeWidgets = (homepageWidgets || [])
+          .filter((w) => w.is_enabled)
+          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-        <div className="hero-links">
-          <Link to="/directory">Directory</Link>
-          <Link to="/jobs">Jobs</Link>
-          <Link to="/classifieds">Classifieds</Link>
-        </div>
-      </section>
-
-      {/* ABOUT */}
-      <section className="about">
-        <img
-          src="/Community about us.png"
-          alt="Community"
-        />
-
-        <div className="about-content">
-          <h2 className="sam1">Welcome Community Hub</h2>
-          <p>
-            This platform is designed to empower verified users by offering a secure and structured
-            self-registration process, followed by admin approval. This two-step verification ensures
-            that only genuine and trusted members become part of the community, creating a safe and
-            reliable environment for everyone. Once approved, users gain access to a fast-loading and
-            user-friendly homepage that serves as a central hub for opportunities, resources, and
-            connections. The prominently displayed links directory enables users to quickly discover
-            businesses, services, jobs, classifieds, and community updates without confusion or delays.
-          </p>
-          <p>
-            With a strong focus on speed, security, and ease of use, the platform helps users save time,
-            build meaningful connections, and confidently explore opportunities—all within a trusted
-            digital ecosystem.
-          </p>
-        </div>
-      </section>
-
-      {/* PLATFORM FEATURES */}
-      <section className="features">
-        <div className="features-container">
-          <h2 className="section-title">Platform Features</h2>
-
-          <div className="feature-list">
-            <div className="feature-card">
-              <div className="feature-img">
-                <img src="/Community hub.png" alt="Community" />
+        const widgetMap = {
+          hero: (
+            <section key="hero" className="hero">
+              <h3>Community Hub</h3>
+              <h1>Your Gateway to Trusted Businesses, Jobs & Community Resources</h1>
+              <p>
+                A secure community platform with self-registration, admin approval,
+                directories, jobs, and classifieds — designed for speed and simplicity.
+              </p>
+              <div className="hero-links">
+                <Link to="/directory">Directory</Link>
+                <Link to="/jobs">Jobs</Link>
+                <Link to="/classifieds">Classifieds</Link>
               </div>
-              <div className="feature-content">
-                <h3>Community</h3>
+            </section>
+          ),
+          about: (
+            <section key="about" className="about">
+              <img src="/Community about us.png" alt="Community" />
+              <div className="about-content">
+                <h2 className="sam1">Welcome Community Hub</h2>
                 <p>
-                  Connect with trusted members and grow strong relationships inside a safe, private community space.
+                  This platform is designed to empower verified users by offering a secure and structured
+                  self-registration process, followed by admin approval. This two-step verification ensures
+                  that only genuine and trusted members become part of the community, creating a safe and
+                  reliable environment for everyone. Once approved, users gain access to a fast-loading and
+                  user-friendly homepage that serves as a central hub for opportunities, resources, and
+                  connections. The prominently displayed links directory enables users to quickly discover
+                  businesses, services, jobs, classifieds, and community updates without confusion or delays.
                 </p>
-                <Link to="/community" className="feature-btn">
-                  View Community
-                </Link>
-              </div>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-img">
-                <img src="/directory.png" alt="Directory" />
-              </div>
-              <div className="feature-content">
-                <h3>Directory</h3>
                 <p>
-                  Browse verified listings quickly and reach members or businesses easily with smooth, simple navigation.
+                  With a strong focus on speed, security, and ease of use, the platform helps users save time,
+                  build meaningful connections, and confidently explore opportunities—all within a trusted
+                  digital ecosystem.
                 </p>
-                <Link to="/directory" className="feature-btn">
-                  View Directory
-                </Link>
               </div>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-img">
-                <img src="/jobs.png" alt="Jobs" />
-              </div>
-              <div className="feature-content">
-                <h3>Jobs</h3>
-                <p>
-                  Explore approved job posts shared by members and access opportunities available only to verified users.
-                </p>
-                <Link to="/jobs" className="feature-btn">
-                  View More Jobs
-                </Link>
-              </div>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-img">
-                <img src="/classifieds.png" alt="Classifieds" />
-              </div>
-              <div className="feature-content">
-                <h3>Classifieds</h3>
-                <p>
-                  Post, buy, sell, or promote services fast with clean listings and quick responses inside the platform.
-                </p>
-                <Link to="/classifieds" className="feature-btn">
-                  View Classifieds
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CONTACT */}
-      <section className="contact">
-        <div className="contact-wrapper">
-          <div className="contact-card">
-            <h2>Contact Us</h2>
-            <p>Have questions or need support? We’d love to hear from you.</p>
-
-            {contactSent ? (
-              <div style={{ padding: "30px", background: "#f0fdf4", borderRadius: "16px", color: "#166534" }}>
-                <h3 style={{ margin: "0 0 10px", fontSize: "20px" }}>✅ Thank You!</h3>
-                <p style={{ margin: 0, color: "#15803d" }}>Your message has been sent to our administration. We will get back to you shortly.</p>
-              </div>
-            ) : (
-              <form className="contact-form" onSubmit={(e) => { e.preventDefault(); setContactSent(true); }}>
-                <div className="input-row">
-                  <input type="text" placeholder="Your Name" required />
-                  <input type="email" placeholder="Your Email" required />
+            </section>
+          ),
+          services: (
+            <section key="services" className="features">
+              <div className="features-container">
+                <h2 className="section-title">Platform Features</h2>
+                <div className="feature-list">
+                  <div className="feature-card">
+                    <div className="feature-img">
+                      <img src="/Community hub.png" alt="Community" />
+                    </div>
+                    <div className="feature-content">
+                      <h3>Community</h3>
+                      <p>Connect with trusted members and grow strong relationships inside a safe, private community space.</p>
+                      <Link to="/community" className="feature-btn">View Community</Link>
+                    </div>
+                  </div>
+                  <div className="feature-card">
+                    <div className="feature-img">
+                      <img src="/directory.png" alt="Directory" />
+                    </div>
+                    <div className="feature-content">
+                      <h3>Directory</h3>
+                      <p>Browse verified listings quickly and reach members or businesses easily with smooth, simple navigation.</p>
+                      <Link to="/directory" className="feature-btn">View Directory</Link>
+                    </div>
+                  </div>
+                  <div className="feature-card">
+                    <div className="feature-img">
+                      <img src="/jobs.png" alt="Jobs" />
+                    </div>
+                    <div className="feature-content">
+                      <h3>Jobs</h3>
+                      <p>Explore approved job posts shared by members and access opportunities available only to verified users.</p>
+                      <Link to="/jobs" className="feature-btn">View More Jobs</Link>
+                    </div>
+                  </div>
+                  <div className="feature-card">
+                    <div className="feature-img">
+                      <img src="/classifieds.png" alt="Classifieds" />
+                    </div>
+                    <div className="feature-content">
+                      <h3>Classifieds</h3>
+                      <p>Post, buy, sell, or promote services fast with clean listings and quick responses inside the platform.</p>
+                      <Link to="/classifieds" className="feature-btn">View Classifieds</Link>
+                    </div>
+                  </div>
                 </div>
-
-                <div className="input-row">
-                  <input type="tel" placeholder="Mobile Number" />
-                  <input type="text" placeholder="Subject" required />
+              </div>
+            </section>
+          ),
+          contact: (
+            <section key="contact" className="contact">
+              <div className="contact-wrapper">
+                <div className="contact-card">
+                  <h2>Contact Us</h2>
+                  <p>Have questions or need support? We’d love to hear from you.</p>
+                  {contactSent ? (
+                    <div style={{ padding: "30px", background: "#f0fdf4", borderRadius: "16px", color: "#166534" }}>
+                      <h3 style={{ margin: "0 0 10px", fontSize: "20px" }}>✅ Thank You!</h3>
+                      <p style={{ margin: 0, color: "#15803d" }}>Your message has been sent to our administration. We will get back to you shortly.</p>
+                    </div>
+                  ) : (
+                    <form className="contact-form" onSubmit={(e) => { e.preventDefault(); setContactSent(true); }}>
+                      <div className="input-row">
+                        <input type="text" placeholder="Your Name" required />
+                        <input type="email" placeholder="Your Email" required />
+                      </div>
+                      <div className="input-row">
+                        <input type="tel" placeholder="Mobile Number" />
+                        <input type="text" placeholder="Subject" required />
+                      </div>
+                      <textarea rows="5" placeholder="Your Message" required></textarea>
+                      <button type="submit">Send Message</button>
+                    </form>
+                  )}
                 </div>
+              </div>
+            </section>
+          ),
+        };
 
-                <textarea rows="5" placeholder="Your Message" required></textarea>
-
-                <button type="submit">Send Message</button>
-              </form>
-            )}
-          </div>
-        </div>
-      </section>
+        return activeWidgets.map((w) => widgetMap[w.key] || null);
+      })()}
     </div>
   );
 }

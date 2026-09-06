@@ -25,14 +25,16 @@ import ProtectedRoleRoute from "../components/auth/ProtectedRoleRoute";
 import ProtectedUserRoute from "../components/auth/ProtectedUserRoute";
 import AdminLogin from "../pages/AdminLogin";
 import Dashboard from "../pages/Dashboard";
+import { ThemeProvider } from "../context/ThemeContext";
 
 const AppRoutes = () => {
   return (
     <BrowserRouter>
-      <ScrollToTop />
-      <Header />
+      <ThemeProvider>
+        <ScrollToTop />
+        <Header />
 
-      <Routes>
+        <Routes>
         {/* Public Pages */}
         <Route path="/" element={<Home />} />
         <Route path="/welcome" element={<Welcome />} />
@@ -73,7 +75,8 @@ const AppRoutes = () => {
       </Routes>
 
       <Footer />
-    </BrowserRouter>
+    </ThemeProvider>
+  </BrowserRouter>
   );
 };
 

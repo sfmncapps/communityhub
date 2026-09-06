@@ -11,6 +11,7 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
     { id: "jobs", label: "Jobs Moderation", icon: "💼" },
     { id: "directory", label: "Directory Listings", icon: "🏢" },
     { id: "classifieds", label: "Classifieds", icon: "🛒" },
+    { id: "theme", label: "Theme & Layout", icon: "🎨" },
   ];
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { FaBars, FaTimes, FaEnvelope, FaShieldAlt, FaUsersCog } from "react-icons/fa";
 import supabase from "../config/supabaseClient";
+import { useTheme } from "../context/ThemeContext";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -14,9 +15,12 @@ const getAuthToken = async () => {
 
 const Header = () => {
   const navigate = useNavigate();
+  const { headerMenu } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState(null);
   const [checking, setChecking] = useState(true);
+
+  const visibleLinks = (headerMenu || []).filter((item) => item.is_visible);
 
   const loadProfile = async () => {
     // 1. Instant check from localStorage
@@ -171,14 +175,11 @@ const Header = () => {
 
           {/* Desktop Navigation */}
           <nav className="nav desktopNav">
-            <Link to="/" className="link">Home</Link>
-            <Link to="/welcome" className="link">Welcome</Link>
-            <Link to="/events" className="link">Events</Link>
-            <Link to="/directory" className="link">Directory</Link>
-            <Link to="/community" className="link">Community</Link>
-            <Link to="/jobs" className="link">Jobs</Link>
-            <Link to="/classifieds" className="link">Classifieds</Link>
-            <Link to="/contact" className="link">Contact Us</Link>
+            {visibleLinks.map((item) => (
+              <Link key={item.id} to={item.path} className="link">
+                {item.label}
+              </Link>
+            ))}
           </nav>
 
           {/* Desktop Login */}
@@ -202,14 +203,16 @@ const Header = () => {
           <FaTimes />
         </div>
 
-        <Link to="/" className="mobileLink" onClick={() => setMenuOpen(false)}>Home</Link>
-        <Link to="/welcome" className="mobileLink" onClick={() => setMenuOpen(false)}>Welcome</Link>
-        <Link to="/events" className="mobileLink" onClick={() => setMenuOpen(false)}>Events</Link>
-        <Link to="/directory" className="mobileLink" onClick={() => setMenuOpen(false)}>Directory</Link>
-        <Link to="/community" className="mobileLink" onClick={() => setMenuOpen(false)}>Community</Link>
-        <Link to="/jobs" className="mobileLink" onClick={() => setMenuOpen(false)}>Jobs</Link>
-        <Link to="/classifieds" className="mobileLink" onClick={() => setMenuOpen(false)}>Classifieds</Link>
-        <Link to="/contact" className="mobileLink" onClick={() => setMenuOpen(false)}>Contact Us</Link>
+        {visibleLinks.map((item) => (
+          <Link
+            key={item.id}
+            to={item.path}
+            className="mobileLink"
+            onClick={() => setMenuOpen(false)}
+          >
+            {item.label}
+          </Link>
+        ))}
 
         <AuthArea mobile />
       </nav>

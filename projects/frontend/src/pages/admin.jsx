@@ -5,9 +5,9 @@ import DashboardStats from "../components/admin/DashboardStats";
 import PendingUsers from "../components/admin/PendingUsers";
 import ManageJobs from "../components/admin/ManageJobs";
 import ManageDirectory from "../components/admin/ManageDirectory";
-import ManageClassifieds from "../components/admin/ManageClassifieds";
 import ManageVerifications from "../components/admin/ManageVerifications";
 import ManageEvents from "../components/admin/ManageEvents";
+import ManageThemeSettings from "../components/admin/ManageThemeSettings";
 
 const AdminPage = () => {
   const [activePage, setActivePage] = useState("dashboard");
@@ -26,6 +26,8 @@ const AdminPage = () => {
         return <ManageDirectory />;
       case "classifieds":
         return <ManageClassifieds />;
+      case "theme":
+        return <ManageThemeSettings />;
       default:
         return <DashboardStats />;
     }
