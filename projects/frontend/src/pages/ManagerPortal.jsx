@@ -11,6 +11,10 @@ import {
   FaCheckCircle,
   FaClock,
   FaTimesCircle,
+  FaFileAlt,
+  FaGlobe,
+  FaEye,
+  FaEyeSlash,
 } from "react-icons/fa";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -19,10 +23,24 @@ export default function ManagerPortal() {
   const navigate = useNavigate();
   const [collectives, setCollectives] = useState([]);
   const [selectedCol, setSelectedCol] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview', 'edit', 'members', 'broadcast'
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview', 'edit', 'members', 'pages', 'broadcast'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "info" });
+
+  // Page Hierarchy Form State (RFP §3c, §4b)
+  const [pages, setPages] = useState([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [showPageModal, setShowPageModal] = useState(false);
+  const [editingPage, setEditingPage] = useState(null);
+  const [pageForm, setPageForm] = useState({
+    page_slug: "",
+    title: "",
+    content: "",
+    page_order: 0,
+    is_published: true,
+  });
+  const [savingPage, setSavingPage] = useState(false);
 
   // Edit Form State
   const [editForm, setEditForm] = useState({
@@ -90,6 +108,7 @@ export default function ManagerPortal() {
           : list[0];
         setSelectedCol(current);
         syncEditForm(current);
+        fetchCollectivePages(current.id);
       }
     } catch (err) {
       showToast(err.message, "error");
@@ -125,6 +144,122 @@ export default function ManagerPortal() {
   const handleSelectCollective = (col) => {
     setSelectedCol(col);
     syncEditForm(col);
+    fetchCollectivePages(col.id);
+  };
+
+  // --- Page Hierarchy Handlers (RFP §3c, §4b) ---
+  const fetchCollectivePages = async (colId) => {
+    if (!colId) return;
+    setLoadingPages(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API}/collectives/${colId}/pages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPages(data.pages || []);
+      }
+    } catch (err) {
+      console.warn("Could not fetch collective pages:", err);
+    } finally {
+      setLoadingPages(false);
+    }
+  };
+
+  const openCreatePageModal = () => {
+    setEditingPage(null);
+    setPageForm({
+      page_slug: "",
+      title: "",
+      content: "",
+      page_order: pages.length + 1,
+      is_published: true,
+    });
+    setShowPageModal(true);
+  };
+
+  const openEditPageModal = (p) => {
+    setEditingPage(p);
+    setPageForm({
+      page_slug: p.page_slug,
+      title: p.title,
+      content: p.content,
+      page_order: p.page_order || 0,
+      is_published: p.is_published !== false,
+    });
+    setShowPageModal(true);
+  };
+
+  const handleSavePage = async (e) => {
+    e.preventDefault();
+    if (!selectedCol) return;
+    setSavingPage(true);
+    try {
+      const token = getToken();
+      const isEditing = Boolean(editingPage);
+      const url = isEditing
+        ? `${API}/collectives/${selectedCol.id}/pages/${editingPage.id}`
+        : `${API}/collectives/${selectedCol.id}/pages`;
+      const method = isEditing ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(pageForm),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to save sub-page");
+
+      showToast(isEditing ? "Sub-page updated! ✅" : "Sub-page created! ✅", "success");
+      setShowPageModal(false);
+      fetchCollectivePages(selectedCol.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setSavingPage(false);
+    }
+  };
+
+  const handleDeletePage = async (pageId) => {
+    if (!window.confirm("Are you sure you want to delete this sub-page? This action cannot be undone.")) return;
+    try {
+      const token = getToken();
+      const res = await fetch(`${API}/collectives/${selectedCol.id}/pages/${pageId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete sub-page");
+      showToast("Sub-page deleted successfully", "success");
+      fetchCollectivePages(selectedCol.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleTogglePublish = async (p) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API}/collectives/${selectedCol.id}/pages/${p.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_published: !p.is_published }),
+      });
+      if (res.ok) {
+        showToast(`Page is now ${!p.is_published ? "Published" : "Draft"}!`, "info");
+        fetchCollectivePages(selectedCol.id);
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
   // 1. Update Collective Details
@@ -394,6 +529,12 @@ export default function ManagerPortal() {
               onClick={() => setActiveTab("members")}
             >
               <FaUsers /> Members ({selectedCol.members?.length || 0})
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "pages" ? "active" : ""}`}
+              onClick={() => setActiveTab("pages")}
+            >
+              <FaFileAlt /> Pages & Hierarchy ({pages.length})
             </button>
             <button
               className={`tab-btn ${activeTab === "broadcast" ? "active" : ""}`}
@@ -726,6 +867,223 @@ export default function ManagerPortal() {
               </div>
             </div>
           )}
+
+          {/* TAB 5: PAGES & HIERARCHY (RFP §3c, §4b) */}
+          {activeTab === "pages" && (
+            <div className="tab-pane pages-pane">
+              <div className="pane-header-with-action">
+                <div>
+                  <h3>Collective Sub-Page Hierarchy</h3>
+                  <p>
+                    Configure custom sub-pages (e.g. <code>/{selectedCol.slug}/about</code>,{" "}
+                    <code>/{selectedCol.slug}/programs</code>) for your organization.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={openCreatePageModal}
+                >
+                  <FaPlus /> Add Sub-Page
+                </button>
+              </div>
+
+              {/* PAGES TABLE */}
+              <div className="table-responsive">
+                <table className="members-table pages-table">
+                  <thead>
+                    <tr>
+                      <th>Sort</th>
+                      <th>Page Title</th>
+                      <th>Public Route / URL</th>
+                      <th>Status</th>
+                      <th>Last Updated</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pages.map((p) => (
+                      <tr key={p.id}>
+                        <td>
+                          <span className="order-chip">#{p.page_order || 0}</span>
+                        </td>
+                        <td>
+                          <strong>{p.title}</strong>
+                        </td>
+                        <td>
+                          <Link
+                            to={`/${selectedCol.slug}/${p.page_slug}`}
+                            target="_blank"
+                            className="page-slug-badge"
+                            title="Preview live sub-page"
+                          >
+                            /{selectedCol.slug}/{p.page_slug} <FaExternalLinkAlt />
+                          </Link>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className={`publish-toggle-btn ${p.is_published ? "published" : "draft"}`}
+                            onClick={() => handleTogglePublish(p)}
+                            title="Click to toggle publish status"
+                          >
+                            {p.is_published ? (
+                              <>
+                                <FaEye /> Published
+                              </>
+                            ) : (
+                              <>
+                                <FaEyeSlash /> Draft
+                              </>
+                            )}
+                          </button>
+                        </td>
+                        <td>{p.updated_at ? new Date(p.updated_at).toLocaleDateString() : "—"}</td>
+                        <td>
+                          <div className="table-actions">
+                            <button
+                              className="btn-secondary-icon"
+                              onClick={() => openEditPageModal(p)}
+                              title="Edit Page"
+                            >
+                              <FaEdit />
+                            </button>
+                            <button
+                              className="btn-danger-icon"
+                              onClick={() => handleDeletePage(p.id)}
+                              title="Delete Page"
+                            >
+                              <FaTrash />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {pages.length === 0 && (
+                      <tr>
+                        <td colSpan="6" className="empty-td">
+                          No sub-pages configured yet for this collective. Click <strong>"Add Sub-Page"</strong> above to create your first sub-page!
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PAGE EDITOR MODAL */}
+      {showPageModal && (
+        <div className="page-modal-overlay" onClick={() => setShowPageModal(false)}>
+          <div className="page-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingPage ? "Edit Collective Sub-Page" : "Create New Sub-Page"}</h3>
+              <button
+                className="close-modal-btn"
+                onClick={() => setShowPageModal(false)}
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePage} className="page-modal-form">
+              <div className="form-group">
+                <label>Page Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. About Our Collective, Programs, Team"
+                  value={pageForm.title}
+                  onChange={(e) => {
+                    const newTitle = e.target.value;
+                    if (!editingPage && (!pageForm.page_slug || pageForm.page_slug === pageForm.title.toLowerCase().replace(/[^a-z0-9]/g, "-"))) {
+                      setPageForm({
+                        ...pageForm,
+                        title: newTitle,
+                        page_slug: newTitle.toLowerCase().trim().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-"),
+                      });
+                    } else {
+                      setPageForm({ ...pageForm, title: newTitle });
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>
+                    URL Slug *{" "}
+                    <small style={{ color: "#64748b" }}>
+                      (Route: /{selectedCol?.slug}/{pageForm.page_slug || "..."})
+                    </small>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. about, programs, initiatives"
+                    value={pageForm.page_slug}
+                    onChange={(e) =>
+                      setPageForm({
+                        ...pageForm,
+                        page_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, "-"),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Display Sort Order</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={pageForm.page_order}
+                    onChange={(e) =>
+                      setPageForm({ ...pageForm, page_order: parseInt(e.target.value, 10) || 0 })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Page Content (Formatted text / paragraphs) *</label>
+                <textarea
+                  rows="8"
+                  required
+                  placeholder="Enter the full text, mission statement, program details, or announcement for this sub-page. Separate paragraphs with blank lines."
+                  value={pageForm.content}
+                  onChange={(e) => setPageForm({ ...pageForm, content: e.target.value })}
+                />
+              </div>
+
+              <div className="form-checkbox-row">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={pageForm.is_published}
+                    onChange={(e) =>
+                      setPageForm({ ...pageForm, is_published: e.target.checked })
+                    }
+                  />
+                  <span>Publish this sub-page publicly (Make visible on public collective profile)</span>
+                </label>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowPageModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={savingPage}>
+                  {savingPage ? "Saving Sub-Page..." : editingPage ? "Update Sub-Page" : "Create Sub-Page"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1068,6 +1426,193 @@ export default function ManagerPortal() {
         }
 
         .empty-icon { font-size: 54px; color: #94a3b8; margin-bottom: 16px; }
+
+        /* PAGES & HIERARCHY STYLES (RFP §3c, §4b) */
+        .pane-header-with-action {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+
+        .pane-header-with-action h3 {
+          margin: 0 0 4px 0;
+          font-size: 20px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .pane-header-with-action p {
+          margin: 0;
+          color: #64748b;
+          font-size: 14px;
+        }
+
+        .order-chip {
+          display: inline-block;
+          background: #f1f5f9;
+          color: #475569;
+          font-weight: 700;
+          font-size: 12px;
+          padding: 4px 8px;
+          border-radius: 6px;
+        }
+
+        .page-slug-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #f0fdf4;
+          color: #166534;
+          font-size: 13px;
+          font-family: monospace;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 6px;
+          text-decoration: none;
+          transition: background 0.15s;
+        }
+
+        .page-slug-badge:hover {
+          background: #dcfce7;
+        }
+
+        .publish-toggle-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .publish-toggle-btn.published {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .publish-toggle-btn.draft {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .table-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .btn-secondary-icon {
+          background: #f1f5f9;
+          color: #475569;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          padding: 8px 10px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .btn-secondary-icon:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+
+        /* MODAL STYLES */
+        .page-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999;
+          padding: 20px;
+        }
+
+        .page-modal-card {
+          background: white;
+          border-radius: 16px;
+          width: 100%;
+          max-width: 680px;
+          max-height: 90vh;
+          overflow-y: auto;
+          padding: 30px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .modal-header h3 {
+          margin: 0;
+          font-size: 20px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .close-modal-btn {
+          background: none;
+          border: none;
+          font-size: 28px;
+          line-height: 1;
+          color: #94a3b8;
+          cursor: pointer;
+        }
+
+        .close-modal-btn:hover {
+          color: #0f172a;
+        }
+
+        .page-modal-form .form-row {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 16px;
+        }
+
+        .form-checkbox-row {
+          margin: 16px 0 24px;
+        }
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          font-size: 14px;
+          color: #334155;
+          font-weight: 500;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+          width: 18px;
+          height: 18px;
+          cursor: pointer;
+        }
+
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 24px;
+          padding-top: 16px;
+          border-top: 1px solid #f1f5f9;
+        }
 
         @media (max-width: 768px) {
           .overview-grid, .form-grid { grid-template-columns: 1fr; }

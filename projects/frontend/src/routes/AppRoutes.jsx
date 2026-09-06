@@ -67,8 +67,9 @@ const AppRoutes = () => {
           <Route path="/messages" element={<MessagingCenter />} />
         </Route>
 
-        {/* Dynamic Collective Profile Route (Placed after static routes) */}
+        {/* Dynamic Collective Profile & Sub-Pages Route (Placed after static routes) */}
         <Route path="/:collectiveSlug" element={<CollectiveProfile />} />
+        <Route path="/:collectiveSlug/:subPage" element={<CollectiveProfile />} />
       </Routes>
 
       <Footer />

@@ -3,15 +3,60 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import supabase from "../config/supabaseClient";
 
 export default function CollectiveProfile() {
-  const { collectiveSlug } = useParams();
+  const { collectiveSlug, subPage } = useParams();
   const navigate = useNavigate();
   const [collective, setCollective] = useState(null);
+  const [subPages, setSubPages] = useState([]);
+  const [activeSubPage, setActiveSubPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchCollective();
+    fetchSubPages();
   }, [collectiveSlug]);
+
+  useEffect(() => {
+    if (subPage && subPages.length > 0) {
+      const match = subPages.find((p) => p.page_slug === subPage.toLowerCase());
+      if (match) {
+        setActiveSubPage(match);
+      } else {
+        fetchSingleSubPage(subPage);
+      }
+    } else if (subPage) {
+      fetchSingleSubPage(subPage);
+    } else {
+      setActiveSubPage(null);
+    }
+  }, [subPage, subPages]);
+
+  const fetchSubPages = async () => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/collectives/slug/${collectiveSlug}/pages`);
+      if (res.ok) {
+        const data = await res.json();
+        setSubPages(data.pages || []);
+      }
+    } catch (err) {
+      console.warn("Could not fetch collective sub-pages:", err);
+    }
+  };
+
+  const fetchSingleSubPage = async (pageSlug) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/collectives/slug/${collectiveSlug}/pages/${pageSlug}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveSubPage(data.page || null);
+      } else {
+        setActiveSubPage(null);
+      }
+    } catch (err) {
+      console.warn("Could not fetch sub-page:", err);
+      setActiveSubPage(null);
+    }
+  };
 
   const fetchCollective = async () => {
     setLoading(true);
@@ -177,54 +222,137 @@ export default function CollectiveProfile() {
         </div>
       </div>
 
+      {/* SUB-PAGE HIERARCHY NAVIGATION TABS */}
+      <div className="hierarchy-nav-bar">
+        <div className="hierarchy-nav-inner">
+          <Link
+            to={`/${collectiveSlug}`}
+            className={`nav-tab-item ${!subPage ? "active" : ""}`}
+          >
+            📋 Overview
+          </Link>
+          {subPages.map((page) => (
+            <Link
+              key={page.id}
+              to={`/${collectiveSlug}/${page.page_slug}`}
+              className={`nav-tab-item ${subPage === page.page_slug ? "active" : ""}`}
+            >
+              📄 {page.title}
+            </Link>
+          ))}
+        </div>
+      </div>
+
       {/* BODY CONTENT */}
       <div className="profile-container">
-        <div className="main-col">
-          {/* ABOUT */}
-          <div className="card-box">
-            <h3>About {collective.name}</h3>
-            <p className="description-body">
-              {collective.description || "No description provided yet for this collective."}
-            </p>
+        {subPage ? (
+          /* SUB-PAGE VIEW */
+          <div className="main-col">
+            <div className="card-box subpage-view">
+              <div className="subpage-header">
+                <div className="subpage-breadcrumbs">
+                  <Link to={`/${collectiveSlug}`}>{collective.name}</Link>
+                  <span> › </span>
+                  <span className="current-crumb">{activeSubPage ? activeSubPage.title : subPage}</span>
+                </div>
+                <h2>{activeSubPage ? activeSubPage.title : subPage.toUpperCase()}</h2>
+                {activeSubPage?.updated_at && (
+                  <p className="subpage-meta">
+                    Last updated on {new Date(activeSubPage.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                )}
+              </div>
+              <div className="subpage-content-body">
+                {activeSubPage?.content ? (
+                  activeSubPage.content.split("\n\n").map((para, idx) => (
+                    <p key={idx} className="subpage-paragraph">{para}</p>
+                  ))
+                ) : (
+                  <div className="subpage-empty-box">
+                    <p>This sub-page content is currently being drafted by the collective managers.</p>
+                  </div>
+                )}
+              </div>
+              <div className="subpage-footer-nav">
+                <Link to={`/${collectiveSlug}`} className="back-to-overview-btn">
+                  ← Back to Collective Overview
+                </Link>
+              </div>
+            </div>
           </div>
-
-          {/* PARTNERS */}
-          {collective.partners && collective.partners.length > 0 && (
+        ) : (
+          /* OVERVIEW VIEW */
+          <div className="main-col">
+            {/* ABOUT */}
             <div className="card-box">
-              <h3>🤝 Partners & Affiliates</h3>
-              <div className="partners-grid">
-                {collective.partners.map((partner, idx) => (
-                  <div key={idx} className="partner-chip">
-                    {typeof partner === "string" ? partner : partner.name || "Partner"}
-                  </div>
-                ))}
-              </div>
+              <h3>About {collective.name}</h3>
+              <p className="description-body">
+                {collective.description || "No description provided yet for this collective."}
+              </p>
             </div>
-          )}
 
-          {/* MEMBERS */}
-          {collective.members && collective.members.length > 0 && (
-            <div className="card-box">
-              <h3>👥 Team & Community Members ({collective.members.length})</h3>
-              <div className="members-list">
-                {collective.members.map((m) => (
-                  <div key={m.id} className="member-item">
-                    <div className="avatar-placeholder">
-                      {(m.user?.name || "M").charAt(0).toUpperCase()}
+            {/* PARTNERS */}
+            {collective.partners && collective.partners.length > 0 && (
+              <div className="card-box">
+                <h3>🤝 Partners & Affiliates</h3>
+                <div className="partners-grid">
+                  {collective.partners.map((partner, idx) => (
+                    <div key={idx} className="partner-chip">
+                      {typeof partner === "string" ? partner : partner.name || "Partner"}
                     </div>
-                    <div className="member-details">
-                      <strong>{m.user?.name || "Member"}</strong>
-                      <span className="member-role">{m.role || "Member"}</span>
-                      {m.user?.company_name && <small>{m.user.company_name}</small>}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+
+            {/* MEMBERS */}
+            {collective.members && collective.members.length > 0 && (
+              <div className="card-box">
+                <h3>👥 Team & Community Members ({collective.members.length})</h3>
+                <div className="members-list">
+                  {collective.members.map((m) => (
+                    <div key={m.id} className="member-item">
+                      <div className="avatar-placeholder">
+                        {(m.user?.name || "M").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="member-details">
+                        <strong>{m.user?.name || "Member"}</strong>
+                        <span className="member-role">{m.role || "Member"}</span>
+                        {m.user?.company_name && <small>{m.user.company_name}</small>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="side-col">
+          {/* SUB-PAGES DIRECTORY CARD */}
+          {subPages && subPages.length > 0 && (
+            <div className="card-box side-card">
+              <h3>📄 Collective Pages</h3>
+              <div className="subpage-nav-list">
+                <Link
+                  to={`/${collectiveSlug}`}
+                  className={`subpage-nav-link ${!subPage ? "active" : ""}`}
+                >
+                  <span className="bullet">›</span> Overview (Main)
+                </Link>
+                {subPages.map((p) => (
+                  <Link
+                    key={p.id}
+                    to={`/${collectiveSlug}/${p.page_slug}`}
+                    className={`subpage-nav-link ${subPage === p.page_slug ? "active" : ""}`}
+                  >
+                    <span className="bullet">›</span> {p.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* CONTACT INFO CARD */}
           <div className="card-box side-card">
             <h3>Contact Information</h3>
@@ -500,6 +628,166 @@ export default function CollectiveProfile() {
           font-weight: 600;
           text-decoration: none;
           margin-top: 10px;
+        }
+
+        /* HIERARCHY NAVIGATION TABS */
+        .hierarchy-nav-bar {
+          background: #ffffff;
+          border-bottom: 2px solid #e2e8f0;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+          position: sticky;
+          top: 0;
+          z-index: 20;
+        }
+
+        .hierarchy-nav-inner {
+          display: flex;
+          overflow-x: auto;
+          padding: 0 8%;
+          gap: 6px;
+        }
+
+        .nav-tab-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 16px 20px;
+          color: #475569;
+          font-weight: 600;
+          font-size: 14px;
+          text-decoration: none;
+          border-bottom: 3px solid transparent;
+          white-space: nowrap;
+          transition: all 0.2s;
+        }
+
+        .nav-tab-item:hover {
+          color: #0f766e;
+          background: #f8fafc;
+        }
+
+        .nav-tab-item.active {
+          color: #0f766e;
+          border-bottom-color: #0f766e;
+          background: #f0fdfa;
+        }
+
+        /* SUBPAGE VIEW ARTICLE */
+        .subpage-view {
+          padding: 36px 32px;
+        }
+
+        .subpage-header {
+          border-bottom: 1px solid #e2e8f0;
+          padding-bottom: 20px;
+          margin-bottom: 24px;
+        }
+
+        .subpage-breadcrumbs {
+          font-size: 13px;
+          color: #64748b;
+          margin-bottom: 10px;
+        }
+
+        .subpage-breadcrumbs a {
+          color: #0f766e;
+          text-decoration: none;
+          font-weight: 600;
+        }
+
+        .current-crumb {
+          color: #0f172a;
+          font-weight: 600;
+        }
+
+        .subpage-header h2 {
+          font-size: 28px;
+          font-weight: 800;
+          color: #0f172a;
+          margin: 0 0 6px 0;
+        }
+
+        .subpage-meta {
+          font-size: 12px;
+          color: #64748b;
+          margin: 0;
+        }
+
+        .subpage-content-body {
+          min-height: 200px;
+        }
+
+        .subpage-paragraph {
+          font-size: 16px;
+          line-height: 1.8;
+          color: #334155;
+          margin-bottom: 18px;
+        }
+
+        .subpage-empty-box {
+          background: #f8fafc;
+          border: 1px dashed #cbd5e1;
+          border-radius: 12px;
+          padding: 30px;
+          text-align: center;
+          color: #64748b;
+        }
+
+        .subpage-footer-nav {
+          margin-top: 36px;
+          padding-top: 20px;
+          border-top: 1px solid #f1f5f9;
+        }
+
+        .back-to-overview-btn {
+          display: inline-block;
+          background: #f1f5f9;
+          color: #0f766e;
+          font-weight: 700;
+          font-size: 14px;
+          padding: 10px 18px;
+          border-radius: 8px;
+          text-decoration: none;
+          transition: background 0.2s;
+        }
+
+        .back-to-overview-btn:hover {
+          background: #e2e8f0;
+        }
+
+        /* SIDEBAR SUBPAGES LIST */
+        .subpage-nav-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .subpage-nav-link {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 8px;
+          color: #475569;
+          text-decoration: none;
+          font-size: 14px;
+          font-weight: 500;
+          transition: background 0.15s;
+        }
+
+        .subpage-nav-link:hover {
+          background: #f1f5f9;
+          color: #0f766e;
+        }
+
+        .subpage-nav-link.active {
+          background: #f0fdfa;
+          color: #0f766e;
+          font-weight: 700;
+        }
+
+        .subpage-nav-link .bullet {
+          font-weight: 800;
         }
 
         @media (max-width: 900px) {
