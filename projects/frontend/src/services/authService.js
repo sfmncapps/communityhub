@@ -1,11 +1,12 @@
 import supabase from "../config/supabaseClient";
 import bcrypt from "bcryptjs";
 
-/* ================= REGISTER ================= */
+const API = import.meta.env.VITE_API_BASE_URL || "https://communityhub.sunflowerwebtek.com/api";
+
 /* ================= REGISTER ================= */
 export const registerUser = async (formData) => {
   try {
-    const res = await fetch("https://communityhub.sunflowerwebtek.com/api/auth/register", {
+    const res = await fetch(`${API}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -31,16 +32,16 @@ export const registerUser = async (formData) => {
     alert("Registration submitted. Waiting for admin approval.");
 
     return data;
-
   } catch (err) {
     console.error("Register error:", err);
     alert("Server error during registration");
     return null;
   }
 };
+
 export const loginUser = async (identifier, password) => {
   try {
-    const res = await fetch("https://communityhub.sunflowerwebtek.com/api/auth/login", {
+    const res = await fetch(`${API}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),
@@ -60,6 +61,17 @@ export const loginUser = async (identifier, password) => {
   } catch (err) {
     console.error("Login error:", err);
     alert("Backend not running / API error");
+    return null;
+  }
+};
+
+export const getAuthProvidersService = async () => {
+  try {
+    const res = await fetch(`${API}/auth/providers`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error("Fetch providers error:", err);
     return null;
   }
 };

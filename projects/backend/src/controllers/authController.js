@@ -647,11 +647,98 @@ export const updateMyProfile = async (req, res) => {
 };
 
 // ============================================================
-// OAuth post-login check (Google/Apple) — called by the frontend
-// right after a Supabase OAuth session appears. Runs through the
-// backend (service_role) instead of the frontend's anon-key
-// client, because users_pending/users_active have RLS enabled
-// with no policies — only service_role can write to them.
+// SUPPORTED SSO / SOCIAL LOGIN PROVIDERS (RFP §7b)
+// ============================================================
+export const SUPPORTED_SSO_PROVIDERS = [
+  {
+    id: "google",
+    name: "Google",
+    type: "oauth",
+    status: "active",
+    authProviderKey: "google",
+    instructions: "Configured via Supabase Auth (Google OAuth Client ID & Secret).",
+  },
+  {
+    id: "apple",
+    name: "Apple",
+    type: "oauth",
+    status: "active",
+    authProviderKey: "apple",
+    instructions: "Configured via Supabase Auth (Apple Services ID, Key ID, & Private Key).",
+  },
+  {
+    id: "azure",
+    name: "Microsoft (Outlook / Azure AD)",
+    type: "oauth",
+    status: "active",
+    authProviderKey: "azure",
+    instructions: "Configured via Supabase Auth (Azure AD App Registration Client ID & Secret).",
+  },
+  {
+    id: "facebook",
+    name: "Facebook",
+    type: "oauth",
+    status: "active",
+    authProviderKey: "facebook",
+    instructions: "Configured via Supabase Auth (Meta for Developers App ID & App Secret).",
+  },
+  {
+    id: "twitter",
+    name: "Twitter / X",
+    type: "oauth",
+    status: "active",
+    authProviderKey: "twitter",
+    instructions: "Configured via Supabase Auth (X Developer Portal API Key & Secret).",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    type: "otp",
+    status: "active",
+    instructions: "Unified instant passwordless OTP delivered via CommunityHub WhatsApp Gateway.",
+  },
+  {
+    id: "email",
+    name: "Email OTP",
+    type: "otp",
+    status: "active",
+    instructions: "Email verification OTP delivered via CommunityHub Mail Service.",
+  },
+  {
+    id: "phone",
+    name: "Phone / SMS OTP",
+    type: "otp",
+    status: "active",
+    instructions: "Phone verification OTP delivered via CommunityHub SMS Gateway.",
+  },
+  {
+    id: "yahoo",
+    name: "Yahoo",
+    type: "oauth",
+    status: "unsupported",
+    reason: "Supabase Auth does not provide an out-of-the-box Yahoo OAuth provider; requires custom OpenID Connect enterprise connector.",
+  },
+  {
+    id: "instagram",
+    name: "Instagram",
+    type: "oauth",
+    status: "unsupported",
+    reason: "Meta deprecated the standalone Instagram Basic Display API in Dec 2024; Instagram authentication is folded into Facebook Login for Business.",
+  },
+];
+
+export const getAuthProviders = async (req, res) => {
+  return res.json({
+    providers: SUPPORTED_SSO_PROVIDERS,
+    active: SUPPORTED_SSO_PROVIDERS.filter((p) => p.status === "active"),
+    unsupported: SUPPORTED_SSO_PROVIDERS.filter((p) => p.status === "unsupported"),
+  });
+};
+
+// ============================================================
+// OAuth post-login check (Google/Apple/Facebook/Twitter/Azure)
+// Runs through the backend (service_role) to create/verify users_active.
+// Issues a standard CommunityHub session token for consistent auth.
 // ============================================================
 export const oauthCheck = async (req, res) => {
   try {
@@ -674,26 +761,78 @@ export const oauthCheck = async (req, res) => {
     if (activeErr) return res.status(500).json({ message: activeErr.message });
 
     if (activeUser) {
+      const sessionJwt = jwt.sign({ userId: activeUser.id }, process.env.JWT_SECRET, {
+        expiresIn: "7d",
+      });
       const { password, ...safeUser } = activeUser;
-      return res.json({ approved: true, user: safeUser });
+      return res.json({ approved: true, user: safeUser, token: sessionJwt });
     }
 
-    // First time this Google/Apple account has signed in — auto-approve,
+    // Parse provider & user metadata across providers (Google, Apple, Facebook, Twitter, Azure, etc.)
+    const rawProvider = (authUser.app_metadata?.provider || "oauth").toLowerCase();
+    const meta = authUser.user_metadata || {};
+
+    const fullName = (meta.full_name || meta.name || "").trim();
+    let firstName = (meta.given_name || meta.first_name || "").trim();
+    let lastName = (meta.family_name || meta.last_name || "").trim();
+    let middleName = "";
+
+    if (!firstName && fullName) {
+      const tokens = fullName.split(/\s+/);
+      firstName = tokens[0] || "";
+      if (tokens.length === 2) {
+        lastName = tokens[1] || "";
+      } else if (tokens.length > 2) {
+        middleName = tokens.slice(1, -1).join(" ");
+        lastName = tokens[tokens.length - 1] || "";
+      }
+    }
+
+    const avatarUrl = meta.avatar_url || meta.picture || meta.profile_pic || null;
+
+    // First time this OAuth account has signed in — auto-approve,
     // create them straight in users_active, no pending step.
-    const { data: newUser, error: insertErr } = await supabase
+    const newUserData = {
+      auth_id: authUser.id,
+      email: authUser.email || null,
+      name: fullName || `${firstName} ${lastName}`.trim() || null,
+      first_name: firstName || null,
+      middle_name: middleName || null,
+      last_name: lastName || null,
+      profile_pic: avatarUrl,
+      login_method: rawProvider,
+      role: "user",
+      approved: true,
+    };
+
+    let { data: newUser, error: insertErr } = await supabase
       .from("users_active")
-      .insert({
-        auth_id: authUser.id,
-        email: authUser.email || null,
-        name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
-        login_method: authUser.app_metadata?.provider || "oauth",
-      })
+      .insert(newUserData)
       .select()
       .single();
-    if (insertErr) return res.status(500).json({ message: insertErr.message });
+
+    // Fallback if discrete schema columns are still refreshing in PostgREST cache
+    if (insertErr && (insertErr.code === "PGRST204" || insertErr.code === "42703")) {
+      const fallbackData = {
+        auth_id: authUser.id,
+        email: authUser.email || null,
+        name: fullName || `${firstName} ${lastName}`.trim() || null,
+        login_method: rawProvider,
+        role: "user",
+      };
+      const retry = await supabase.from("users_active").insert(fallbackData).select().single();
+      if (retry.error) return res.status(500).json({ message: retry.error.message });
+      newUser = { ...retry.data, ...newUserData };
+    } else if (insertErr) {
+      return res.status(500).json({ message: insertErr.message });
+    }
+
+    const sessionJwt = jwt.sign({ userId: newUser.id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     const { password, ...safeNewUser } = newUser;
-    return res.json({ approved: true, user: safeNewUser });
+    return res.json({ approved: true, user: safeNewUser, token: sessionJwt });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }

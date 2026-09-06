@@ -12,11 +12,15 @@ import {
   oauthCheck,
   sendWhatsappOtp,
   verifyWhatsappOtp,
+  getAuthProviders,
 } from "../controllers/authController.js";
 import { requireTempToken } from "../middleware/authTempToken.js";
 import { requireUser } from "../middleware/requireUser.js";
 
 const router = express.Router();
+
+// Supported SSO & OAuth providers matrix (RFP §7b)
+router.get("/providers", getAuthProviders);
 
 // Signup flow (OTP verify -> set password) — email / phone only now
 router.post("/send-otp", sendOtp);

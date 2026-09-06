@@ -54,6 +54,8 @@ const LoginForm = () => {
         }
 
         if (data.approved) {
+          if (data.token) localStorage.setItem("token", data.token);
+          window.dispatchEvent(new Event("profile-updated"));
           navigate("/dashboard");
         } else {
           alert("Account created. Waiting for admin approval before you can log in.");
@@ -86,25 +88,18 @@ const LoginForm = () => {
 
   /* GOOGLE */
   const loginWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      // Land back on /login, not /dashboard directly — the
-      // onAuthStateChange handler above decides where to send
-      // them once it's confirmed they're an approved member.
-      redirectTo: `${window.location.origin}/login`,
-      // Force Google's account picker every time, instead of
-      // silently reusing whatever Google account the browser
-      // already has an active session with. Without this, a
-      // second person on the same browser can't switch accounts.
-      queryParams: {
-        prompt: "select_account",
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        queryParams: {
+          prompt: "select_account",
+        },
       },
-    },
-  });
+    });
 
-  if (error) alert(error.message);
-};
+    if (error) alert(error.message);
+  };
 
   /* APPLE */
   const loginWithApple = async () => {
@@ -115,6 +110,44 @@ const LoginForm = () => {
       },
     });
     if (error) alert(error.message);
+  };
+
+  /* MICROSOFT (Azure AD / Outlook - RFP §7b) */
+  const loginWithMicrosoft = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        scopes: "email profile openid",
+      },
+    });
+    if (error) alert(error.message);
+  };
+
+  /* FACEBOOK (RFP §7b) */
+  const loginWithFacebook = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "facebook",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+      },
+    });
+    if (error) alert(error.message);
+  };
+
+  /* TWITTER / X (RFP §7b) */
+  const loginWithTwitter = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "twitter",
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+      },
+    });
+    if (error) alert(error.message);
+  };
+
+  const showProviderNote = (provider, note) => {
+    alert(`${provider} SSO Note: ${note}`);
   };
 
   /* OTP FLOW (email/phone) — endpoint chosen by otpIntent */
@@ -273,26 +306,73 @@ const LoginForm = () => {
             </div>
 
             <div className="icon-row">
-              <button type="button" className="icon-btn" onClick={loginWithGoogle}>
-                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="google"/>
+              <button type="button" className="icon-btn" onClick={loginWithGoogle} title="Sign in with Google">
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google"/>
               </button>
 
-              <button type="button" className="icon-btn" onClick={() => { setMode("email"); }}>
-                <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png" alt="email"/>
+              <button type="button" className="icon-btn" onClick={loginWithApple} title="Sign in with Apple">
+                <img src="https://cdn-icons-png.flaticon.com/512/0/747.png" alt="Apple"/>
               </button>
 
-              <button type="button" className="icon-btn" onClick={() => { setMode("phone"); }}>
-                <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png" alt="phone"/>
+              <button type="button" className="icon-btn" onClick={loginWithMicrosoft} title="Sign in with Microsoft (Outlook / Azure AD)">
+                <svg width="20" height="20" viewBox="0 0 21 21">
+                  <path fill="#f25022" d="M1 1h9v9H1z"/>
+                  <path fill="#00a4ef" d="M1 11h9v9H1z"/>
+                  <path fill="#7fba00" d="M11 1h9v9h-9z"/>
+                  <path fill="#ffb900" d="M11 11h9v9h-9z"/>
+                </svg>
+              </button>
+
+              <button type="button" className="icon-btn" onClick={loginWithFacebook} title="Sign in with Facebook">
+                <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/facebook/facebook-original.svg" alt="Facebook"/>
+              </button>
+
+              <button type="button" className="icon-btn" onClick={loginWithTwitter} title="Sign in with X / Twitter">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0f172a">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 22.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
               </button>
 
               {/* WhatsApp: separate, unified flow — no signup/login tabs apply */}
-              <button type="button" className="icon-btn" onClick={() => { setWaOpen(true); }}>
-                <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="whatsapp"/>
+              <button type="button" className="icon-btn" onClick={() => { setWaOpen(true); setMode(null); }} title="Instant WhatsApp OTP Login">
+                <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="WhatsApp"/>
               </button>
 
-              <button type="button" className="icon-btn" onClick={loginWithApple}>
-                <img src="https://cdn-icons-png.flaticon.com/512/0/747.png" alt="apple"/>
+              <button type="button" className="icon-btn" onClick={() => { setMode("email"); setWaOpen(false); }} title="Sign in / Sign up with Email OTP">
+                <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png" alt="Email OTP"/>
               </button>
+
+              <button type="button" className="icon-btn" onClick={() => { setMode("phone"); setWaOpen(false); }} title="Sign in / Sign up with Phone OTP">
+                <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png" alt="Phone OTP"/>
+              </button>
+            </div>
+
+            <div className="sso-directory-bar">
+              <div className="sso-directory-label">SSO Providers (RFP §7b):</div>
+              <div className="sso-pill-group">
+                <span className="sso-pill active" title="Active native Supabase OAuth">Google</span>
+                <span className="sso-pill active" title="Active native Supabase OAuth">Apple</span>
+                <span className="sso-pill active" title="Active native Supabase OAuth (Azure AD)">Microsoft</span>
+                <span className="sso-pill active" title="Active native Supabase OAuth">Facebook</span>
+                <span className="sso-pill active" title="Active native Supabase OAuth">Twitter/X</span>
+                <span className="sso-pill active" title="Active CommunityHub OTP">WhatsApp</span>
+                <button
+                  type="button"
+                  className="sso-pill info"
+                  onClick={() => showProviderNote("Yahoo", "Requires custom OpenID Connect / SAML Enterprise Identity connector on Supabase Auth.")}
+                  title="Click for Yahoo integration details"
+                >
+                  Yahoo ℹ️
+                </button>
+                <button
+                  type="button"
+                  className="sso-pill info"
+                  onClick={() => showProviderNote("Instagram", "Meta deprecated standalone Instagram login; please use Facebook Login for business accounts.")}
+                  title="Click for Instagram integration details"
+                >
+                  Instagram ℹ️
+                </button>
+              </div>
             </div>
 
             {mode && (
@@ -438,32 +518,86 @@ const LoginForm = () => {
         }
 
         .icon-row {
-          display: flex;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
           gap: 10px;
         }
 
         .icon-btn {
-          flex: 1;
           background: #f1f5f9 !important;
           display: flex;
           align-items: center;
           justify-content: center;
-          height: 48px;
+          height: 46px;
           border-radius: 10px;
           border: 1px solid #e2e8f0;
-          transition: 0.3s ease;
+          transition: all 0.2s ease;
           margin-top: 0 !important;
           padding: 0 !important;
+          cursor: pointer;
         }
 
         .icon-btn:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 18px rgba(0,0,0,0.1);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+          border-color: #94a3b8;
+          background: #ffffff !important;
         }
 
         .icon-btn img {
           width: 22px;
           height: 22px;
+          object-fit: contain;
+        }
+
+        .sso-directory-bar {
+          margin-top: 16px;
+          padding: 10px 12px;
+          background: #f8fafc;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+          font-size: 0.75rem;
+        }
+
+        .sso-directory-label {
+          font-weight: 700;
+          color: #475569;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-size: 0.68rem;
+        }
+
+        .sso-pill-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .sso-pill {
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 0.72rem;
+          font-weight: 600;
+        }
+
+        .sso-pill.active {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .sso-pill.info {
+          background: #e0f2fe !important;
+          color: #0369a1 !important;
+          border: 1px solid #bae6fd !important;
+          cursor: pointer;
+          margin-top: 0 !important;
+          padding: 2px 8px !important;
+          border-radius: 4px !important;
+        }
+
+        .sso-pill.info:hover {
+          background: #bae6fd !important;
         }
 
         .otp-box {
