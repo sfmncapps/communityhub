@@ -383,7 +383,7 @@ const Profile = () => {
             <div className="pf4__form">
               {/* SECTION 1: Personal Details */}
               <div className="pf4__sectionHeader">
-                <h3>Personal Identification (RFP §7a)</h3>
+                <h3>Personal Identification</h3>
                 <span>Basic contact and full legal name</span>
               </div>
 
@@ -455,7 +455,7 @@ const Profile = () => {
 
               {/* SECTION 2: Physical Address */}
               <div className="pf4__sectionHeader">
-                <h3>Physical Address (RFP §7a)</h3>
+                <h3>Physical Address</h3>
                 <span>Street, city, state, country, and postal code</span>
               </div>
 

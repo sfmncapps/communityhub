@@ -16,7 +16,7 @@ export default function ManageVerifications() {
     let results = [];
 
     try {
-      // 1. Direct query from Supabase id_verifications table per RFP requirement
+      // 1. Direct query from Supabase id_verifications table
       const { data: verData, error: verErr } = await supabase
         .from("id_verifications")
         .select("*")

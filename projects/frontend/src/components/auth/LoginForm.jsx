@@ -112,30 +112,33 @@ const LoginForm = () => {
     if (error) alert(error.message);
   };
 
-  /* MICROSOFT (Azure AD / Outlook - RFP §7b) */
-  const loginWithMicrosoft = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "azure",
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-        scopes: "email profile openid",
-      },
-    });
-    if (error) alert(error.message);
+  /* MICROSOFT (Azure AD / Outlook) */
+  const handleMicrosoftLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "azure",
+        options: { scopes: "email profile openid" },
+      });
+      if (error) throw error;
+    } catch (err) {
+      setError(err.message || "Failed to initialize Microsoft login.");
+    }
   };
 
-  /* FACEBOOK (RFP §7b) */
-  const loginWithFacebook = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "facebook",
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-      },
-    });
-    if (error) alert(error.message);
+  /* FACEBOOK */
+  const handleFacebookLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "facebook",
+        options: { scopes: "email,public_profile" },
+      });
+      if (error) throw error;
+    } catch (err) {
+      setError(err.message || "Failed to initialize Facebook login.");
+    }
   };
 
-  /* TWITTER / X (RFP §7b) */
+  /* TWITTER / X */
   const loginWithTwitter = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "twitter",
@@ -348,7 +351,7 @@ const LoginForm = () => {
             </div>
 
             <div className="sso-directory-bar">
-              <div className="sso-directory-label">SSO Providers (RFP §7b):</div>
+              <div className="sso-directory-label">Single Sign-On (SSO) Providers:</div>
               <div className="sso-pill-group">
                 <span className="sso-pill active" title="Active native Supabase OAuth">Google</span>
                 <span className="sso-pill active" title="Active native Supabase OAuth">Apple</span>

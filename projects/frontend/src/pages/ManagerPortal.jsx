@@ -28,7 +28,7 @@ export default function ManagerPortal() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "info" });
 
-  // Page Hierarchy Form State (RFP §3c, §4b)
+  // Page Hierarchy Form State
   const [pages, setPages] = useState([]);
   const [loadingPages, setLoadingPages] = useState(false);
   const [showPageModal, setShowPageModal] = useState(false);
@@ -147,7 +147,7 @@ export default function ManagerPortal() {
     fetchCollectivePages(col.id);
   };
 
-  // --- Page Hierarchy Handlers (RFP §3c, §4b) ---
+  // --- Page Hierarchy Handlers ---
   const fetchCollectivePages = async (colId) => {
     if (!colId) return;
     setLoadingPages(true);
@@ -868,7 +868,7 @@ export default function ManagerPortal() {
             </div>
           )}
 
-          {/* TAB 5: PAGES & HIERARCHY (RFP §3c, §4b) */}
+          {/* TAB 5: PAGES & HIERARCHY */}
           {activeTab === "pages" && (
             <div className="tab-pane pages-pane">
               <div className="pane-header-with-action">
@@ -1427,7 +1427,7 @@ export default function ManagerPortal() {
 
         .empty-icon { font-size: 54px; color: #94a3b8; margin-bottom: 16px; }
 
-        /* PAGES & HIERARCHY STYLES (RFP §3c, §4b) */
+        /* PAGES & HIERARCHY STYLES */
         .pane-header-with-action {
           display: flex;
           justify-content: space-between;

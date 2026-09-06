@@ -417,7 +417,7 @@ const ManageDirectory = () => {
                       {/* STATE RECORD VERIFICATION AUDIT BOX */}
                       <div className={`state-record-box ${c.verification_status || "unverified"}`}>
                         <div className="state-box-header">
-                          <span className="state-box-title">State Corporation Records (RFP §7e):</span>
+                          <span className="state-box-title">State Corporation Records:</span>
                           {isVerified && <span className="verified-chip">✓ State Verified</span>}
                           {isRejected && <span className="rejected-chip">✕ Rejected</span>}
                           {!isVerified && !isRejected && <span className="unverified-chip">⚠️ Unverified</span>}
@@ -620,13 +620,13 @@ const ManageDirectory = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* STATE RECORD VERIFICATION MODAL (RFP §7e)                                 */}
+      {/* STATE RECORD VERIFICATION MODAL                                           */}
       {/* ========================================================================= */}
       {verifyModal.isOpen && (
         <div className="modal-overlay">
           <div className="verify-modal">
             <div className="modal-header">
-              <h3>🛡️ Verify State Record (RFP §7e)</h3>
+              <h3>🛡️ Verify State Record</h3>
               <button className="close-x" onClick={handleCloseVerifyModal}>
                 ×
               </button>

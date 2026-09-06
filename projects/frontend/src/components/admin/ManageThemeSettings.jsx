@@ -135,7 +135,7 @@ export default function ManageThemeSettings() {
       <div className="theme-header">
         <div>
           <h2>🎨 Theme, Menus & Homepage Layout</h2>
-          <p>Configure platform visual design, top navigation menus, and homepage section order (RFP §3b, §4f)</p>
+          <p>Configure platform visual design, top navigation menus, and homepage section order</p>
         </div>
         <button
           className="save-all-btn"
@@ -151,7 +151,7 @@ export default function ManageThemeSettings() {
       {/* 1. THEME PICKER */}
       <section className="theme-section">
         <div className="section-title">
-          <FaPalette /> <h3>Select Platform Theme (RFP §4f)</h3>
+          <FaPalette /> <h3>Select Platform Theme</h3>
         </div>
         <div className="theme-cards-grid">
           {Object.entries(THEME_PALETTES).map(([key, p]) => {
@@ -304,7 +304,7 @@ export default function ManageThemeSettings() {
       {/* 3. HOMEPAGE WIDGETS MANAGER */}
       <section className="theme-section">
         <div className="section-title">
-          <FaThLarge /> <h3>Homepage Section Widgets (RFP §4f)</h3>
+          <FaThLarge /> <h3>Homepage Section Widgets</h3>
         </div>
         <p className="section-desc">
           Arrange and toggle the modules rendered on the public landing page (<code>/</code>).

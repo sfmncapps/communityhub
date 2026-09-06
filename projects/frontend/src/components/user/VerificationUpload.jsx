@@ -98,7 +98,7 @@ export default function VerificationUpload() {
 
       let filePath = redactedUrl;
 
-      // 1. Storage Upload: Save file into 'id-documents' bucket per RFP
+      // 1. Storage Upload: Save file into 'id-documents' bucket
       if (selectedFile && user?.id) {
         const fileExt = selectedFile.name.split(".").pop() || "jpg";
         filePath = `${user.id}/${Date.now()}_id.${fileExt}`;
@@ -112,7 +112,7 @@ export default function VerificationUpload() {
         }
       }
 
-      // 2. Insert row into id_verifications table per RFP requirement
+      // 2. Insert row into id_verifications table
       if (user?.id) {
         const { error: insertErr } = await supabase.from("id_verifications").insert({
           user_id: user.id,
@@ -190,7 +190,7 @@ export default function VerificationUpload() {
 
       {/* REDACTION GUIDELINES */}
       <div className="redaction-guide">
-        <h4>🔒 Document Redaction Guidelines (RFP Requirement):</h4>
+        <h4>🔒 Document Redaction Guidelines:</h4>
         <ul>
           <li><strong>DO:</strong> Ensure your Full Name, Photo, and Expiration Date are clearly visible.</li>
           <li><strong>MUST REDACT:</strong> Black out, blur, or cover sensitive identifiers (Driver's License / ID Number, SSN, DOB).</li>

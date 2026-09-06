@@ -316,7 +316,7 @@ export default function Home() {
         }
 
         /* ----------------------------------------------------
-           2. A-Z DIRECTORY QUICK JUMP BAR (RFP §4c)
+           2. A-Z DIRECTORY QUICK JUMP BAR
         ---------------------------------------------------- */
         .az-nav-section {
           background: #f8fafc;
@@ -526,7 +526,7 @@ export default function Home() {
         }
 
         /* ----------------------------------------------------
-           5. UPCOMING EVENTS SHOWCASE (RFP §8.7b)
+           5. UPCOMING EVENTS SHOWCASE
         ---------------------------------------------------- */
         .events-section {
           padding: 80px 24px;
@@ -689,7 +689,7 @@ export default function Home() {
         }
 
         /* ----------------------------------------------------
-           6. FEATURED COLLECTIVES / SPOTLIGHT (RFP §4b)
+           6. FEATURED COLLECTIVES / SPOTLIGHT
         ---------------------------------------------------- */
         .spotlight-section {
           background: #f8fafc;
@@ -973,7 +973,7 @@ export default function Home() {
       </section>
 
       {/* ====================================================
-          2. A-Z DIRECTORY QUICK NAVIGATOR (RFP §4c)
+          2. A-Z DIRECTORY QUICK NAVIGATOR
       ==================================================== */}
       <section className="az-nav-section">
         <div className="az-nav-inner">
@@ -1064,7 +1064,7 @@ export default function Home() {
       </section>
 
       {/* ====================================================
-          5. UPCOMING EVENTS SHOWCASE (RFP §8.7b)
+          5. UPCOMING EVENTS SHOWCASE
       ==================================================== */}
       <section className="events-section">
         <div className="events-container">
@@ -1128,7 +1128,7 @@ export default function Home() {
       </section>
 
       {/* ====================================================
-          6. FEATURED COLLECTIVES / SPOTLIGHT (RFP §4b)
+          6. FEATURED COLLECTIVES / SPOTLIGHT
       ==================================================== */}
       <section className="spotlight-section">
         <div className="events-container">
