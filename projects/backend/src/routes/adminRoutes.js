@@ -7,17 +7,20 @@ import {
   getAdminStats,
 } from "../controllers/adminController.js";
 import { requireUser } from "../middleware/requireUser.js";
-import { requireRole } from "../middleware/requireRole.js";
+import { requireRole, requireExactRole } from "../middleware/requireRole.js";
 
 const router = express.Router();
 
 router.use(requireUser);
-router.use(requireRole(["admin", "superadmin"]));
+// Global admin routes are strictly limited to admin and superadmin (managers are blocked)
+router.use(requireRole(["admin", "superadmin"], { strict: true }));
 
 router.get("/stats", getAdminStats);
 router.get("/pending-users", getPendingUsers);
 router.post("/approve-user", sendApproval);
 router.get("/users", getAllUsers);
-router.put("/users/:id/role", requireRole(["superadmin"]), updateUserRole);
+
+// Only superadmin can promote/demote roles; admins get 403
+router.put("/users/:id/role", requireExactRole(["superadmin"]), updateUserRole);
 
 export default router;

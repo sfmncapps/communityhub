@@ -337,22 +337,111 @@ export const deleteCollective = async (req, res) => {
   }
 };
 
+// GET /api/collectives/manager/managed (Get collectives owned/managed by the caller)
+export const getMyManagedCollectives = async (req, res) => {
+  try {
+    const userId = req.activeUser.id;
+    const userRole = (req.activeUser.role || "user").toLowerCase();
+
+    if (!["manager", "admin", "superadmin"].includes(userRole)) {
+      return res.status(403).json({ message: "Access denied. Requires manager role." });
+    }
+
+    let query = supabase.from("collectives").select(`
+      *,
+      members:collective_members(
+        id, role, joined_at,
+        user:user_id(id, name, email, phone, company_name)
+      )
+    `);
+
+    // Only superadmin/admin with ?all=true get everything; otherwise managers get only owned collectives
+    if (["superadmin", "admin"].includes(userRole) && req.query.all === "true") {
+      // Return all for admin oversight
+    } else {
+      const { data: ownedRows } = await supabase
+        .from("collectives")
+        .select("id")
+        .eq("owner_id", userId);
+
+      const { data: memberOwnerRows } = await supabase
+        .from("collective_members")
+        .select("collective_id")
+        .eq("user_id", userId)
+        .eq("role", "owner");
+
+      const collectiveIds = Array.from(
+        new Set([
+          ...(ownedRows || []).map((c) => c.id),
+          ...(memberOwnerRows || []).map((m) => m.collective_id),
+        ])
+      );
+
+      if (collectiveIds.length === 0) {
+        return res.json({ collectives: [] });
+      }
+
+      query = query.in("id", collectiveIds);
+    }
+
+    const { data: collectives, error } = await query.order("name", { ascending: true });
+    if (error) return res.status(500).json({ message: error.message });
+
+    return res.json({ collectives: collectives || [] });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
 // POST /api/collectives/:id/members
 export const addCollectiveMember = async (req, res) => {
   try {
     const { id: collective_id } = req.params;
-    const { user_id, role = "member" } = req.body;
+    const { user_id, email, role = "member" } = req.body;
 
-    if (!user_id) return res.status(400).json({ message: "user_id is required" });
+    let targetUserId = user_id;
+
+    // Support looking up user by email if user_id was not directly supplied
+    if (!targetUserId && email) {
+      const { data: foundUser } = await supabase
+        .from("users_active")
+        .select("id")
+        .eq("email", email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (!foundUser) {
+        return res.status(404).json({ message: "No active user found with that email address" });
+      }
+      targetUserId = foundUser.id;
+    }
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "user_id or valid email is required" });
+    }
+
+    // Check if user is already a member
+    const { data: existing } = await supabase
+      .from("collective_members")
+      .select("id")
+      .eq("collective_id", collective_id)
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(400).json({ message: "User is already a member of this collective" });
+    }
 
     const { data: member, error } = await supabase
       .from("collective_members")
-      .insert([{ collective_id, user_id, role }])
-      .select()
+      .insert([{ collective_id, user_id: targetUserId, role }])
+      .select(`
+        id, role, joined_at,
+        user:user_id(id, name, email, phone, company_name)
+      `)
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
-    return res.status(201).json({ message: "Member added", member });
+    return res.status(201).json({ message: "Member added successfully", member });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -370,7 +459,7 @@ export const removeCollectiveMember = async (req, res) => {
       .eq("user_id", userId);
 
     if (error) return res.status(500).json({ message: error.message });
-    return res.json({ message: "Member removed" });
+    return res.json({ message: "Member removed successfully" });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }

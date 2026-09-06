@@ -18,7 +18,7 @@ const getAuthToken = async () => {
   return data?.session?.access_token || null;
 };
 
-export default function ProtectedRoleRoute({ allowedRoles = [] }) {
+export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }) {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
 
@@ -32,7 +32,7 @@ export default function ProtectedRoleRoute({ allowedRoles = [] }) {
         try {
           const parsedUser = JSON.parse(storedUserStr);
           const uRole = (parsedUser?.role || "user").toLowerCase();
-          if (isRoleAllowed(uRole, allowedRoles)) {
+          if (isRoleAllowed(uRole, allowedRoles, strict)) {
             if (mounted) {
               setAuthorized(true);
               setLoading(false);
@@ -65,7 +65,7 @@ export default function ProtectedRoleRoute({ allowedRoles = [] }) {
             localStorage.setItem("user", JSON.stringify(data.user));
             const role = (data.user.role || "user").toLowerCase();
             if (mounted) {
-              setAuthorized(isRoleAllowed(role, allowedRoles));
+              setAuthorized(isRoleAllowed(role, allowedRoles, strict));
               setLoading(false);
             }
             return;
@@ -86,7 +86,7 @@ export default function ProtectedRoleRoute({ allowedRoles = [] }) {
     return () => {
       mounted = false;
     };
-  }, [allowedRoles]);
+  }, [allowedRoles, strict]);
 
   if (loading) {
     return (
@@ -103,9 +103,10 @@ export default function ProtectedRoleRoute({ allowedRoles = [] }) {
   return <Outlet />;
 }
 
-function isRoleAllowed(userRole, allowedRoles) {
+function isRoleAllowed(userRole, allowedRoles, strict = false) {
   if (!allowedRoles || allowedRoles.length === 0) return true;
   if (allowedRoles.includes(userRole)) return true;
+  if (strict) return false;
 
   const userRank = ROLE_RANK[userRole] || 1;
   const minRequiredRank = Math.min(...allowedRoles.map((r) => ROLE_RANK[r] || 1));

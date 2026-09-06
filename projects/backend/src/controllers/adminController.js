@@ -94,11 +94,23 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// PUT /api/admin/users/:id/role (Superadmin/Admin update user role)
+// PUT /api/admin/users/:id/role (Superadmin ONLY update user role)
 export const updateUserRole = async (req, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
+
+    const callerRole = (req.activeUser.role || "").toLowerCase();
+    if (callerRole !== "superadmin") {
+      return res.status(403).json({ message: "Access denied. Only superadmin can modify user roles." });
+    }
+
+    // Condition 3: Prevent Superadmin from accidentally modifying their own role to avoid lockout
+    if (id === req.activeUser.id) {
+      return res.status(400).json({
+        message: "Superadmins cannot modify their own role to prevent leaving the platform without a root account.",
+      });
+    }
 
     const validRoles = ["superadmin", "admin", "manager", "user"];
     if (!validRoles.includes(role)) {

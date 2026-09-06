@@ -107,7 +107,7 @@ const Header = () => {
 
           {isManager && (
             <Link
-              to="/admin"
+              to="/manager"
               className={`managerNavBtn ${mobile ? "mobileBtn" : ""}`}
               onClick={() => setMenuOpen(false)}
               title="Manage Collective Portal"

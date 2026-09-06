@@ -19,6 +19,7 @@ import Jobs from "../pages/Jobs";
 import Classifieds from "../pages/Classifieds";
 import LoginPage from "../pages/login";
 import AdminPage from "../pages/admin";
+import ManagerPortal from "../pages/ManagerPortal";
 import ProtectedRoleRoute from "../components/auth/ProtectedRoleRoute";
 import ProtectedUserRoute from "../components/auth/ProtectedUserRoute";
 import AdminLogin from "../pages/AdminLogin";
@@ -46,10 +47,15 @@ const AppRoutes = () => {
         <Route path="/classifieds" element={<Classifieds />} />
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Admin & Manager Routes (Protected) */}
+        {/* Admin Routes (Strictly Admin & Superadmin) */}
         <Route path="/admin-login" element={<AdminLogin />} />
-        <Route element={<ProtectedRoleRoute allowedRoles={["admin", "superadmin", "manager"]} />}>
+        <Route element={<ProtectedRoleRoute allowedRoles={["admin", "superadmin"]} strict={true} />}>
           <Route path="/admin" element={<AdminPage />} />
+        </Route>
+
+        {/* Manager Routes (Strictly Manager & Superadmin oversight) */}
+        <Route element={<ProtectedRoleRoute allowedRoles={["manager", "superadmin"]} />}>
+          <Route path="/manager" element={<ManagerPortal />} />
         </Route>
 
         {/* User Dashboard & Messaging (Protected) */}

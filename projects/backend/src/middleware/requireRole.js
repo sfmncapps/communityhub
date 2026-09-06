@@ -5,7 +5,7 @@ const ROLE_HIERARCHY = {
   user: 1,
 };
 
-export const requireRole = (allowedRoles = []) => {
+export const requireRole = (allowedRoles = [], { strict = false } = {}) => {
   return (req, res, next) => {
     if (!req.activeUser) {
       return res.status(401).json({ message: "Authentication required" });
@@ -16,6 +16,13 @@ export const requireRole = (allowedRoles = []) => {
     // If allowedRoles is empty or contains user's exact role, grant access
     if (allowedRoles.length === 0 || allowedRoles.includes(userRole)) {
       return next();
+    }
+
+    // In strict mode, only exact roles in allowedRoles pass
+    if (strict) {
+      return res.status(403).json({
+        message: `Access denied. Requires one of roles: [${allowedRoles.join(", ")}]. Your role: '${userRole}'`,
+      });
     }
 
     // Check hierarchy: if user has a higher or equal role level than the lowest allowed role in list
@@ -31,4 +38,8 @@ export const requireRole = (allowedRoles = []) => {
       message: `Access denied. Requires one of roles: [${allowedRoles.join(", ")}]. Your role: '${userRole}'`,
     });
   };
+};
+
+export const requireExactRole = (allowedRoles = []) => {
+  return requireRole(allowedRoles, { strict: true });
 };
