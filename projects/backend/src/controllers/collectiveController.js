@@ -311,7 +311,7 @@ export const updateCollective = async (req, res) => {
       return res.status(400).json({ message: "ZIP code cannot exceed 20 characters" });
     }
 
-    const updates = { updated_at: new Date().toISOString() };
+    const updates = {};
     const fields = [
       "name",
       "category",
@@ -373,7 +373,7 @@ export const approveCollective = async (req, res) => {
     const { id } = req.params;
     const { data, error } = await supabase
       .from("collectives")
-      .update({ status: "approved", updated_at: new Date().toISOString() })
+      .update({ status: "approved" })
       .eq("id", id)
       .select()
       .single();
@@ -391,7 +391,7 @@ export const rejectCollective = async (req, res) => {
     const { id } = req.params;
     const { data, error } = await supabase
       .from("collectives")
-      .update({ status: "rejected", updated_at: new Date().toISOString() })
+      .update({ status: "rejected" })
       .eq("id", id)
       .select()
       .single();
@@ -437,7 +437,6 @@ export const verifyCollectiveStateRecord = async (req, res) => {
       verified_by: req.activeUser.id,
       verified_at: new Date().toISOString(),
       verification_status,
-      updated_at: new Date().toISOString(),
     };
 
     if (verification_status === "verified" && auto_approve) {
@@ -455,7 +454,7 @@ export const verifyCollectiveStateRecord = async (req, res) => {
 
     // Fallback if schema cache does not yet have newly added state_record columns
     if (error && (error.code === "PGRST204" || error.code === "42703")) {
-      const fallbackUpdates = { updated_at: new Date().toISOString() };
+      const fallbackUpdates = {};
       if (updates.status) fallbackUpdates.status = updates.status;
 
       const retry = await supabase

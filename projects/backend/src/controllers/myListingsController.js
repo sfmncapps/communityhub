@@ -44,14 +44,47 @@ export const listMine = async (req, res) => {
   return res.json({ items: data || [] });
 };
 
+const GOOGLE_FORM_REGEX = /^(https?:\/\/)?(forms\.gle\/[a-zA-Z0-9_-]+|(docs|drive)\.google\.com\/forms\/[^\s]+)/i;
+const isGoogleFormUrl = (url) => {
+  if (!url) return false;
+  return GOOGLE_FORM_REGEX.test(url.trim());
+};
+
 export const createMine = async (req, res) => {
   const { resource } = req.params;
   const allowedFields = RESOURCES[resource];
   if (!allowedFields) return res.status(400).json({ message: "Unknown resource" });
 
+  if (resource === "jobs") {
+    if (!req.body.apply_link || !isGoogleFormUrl(req.body.apply_link)) {
+      return res.status(400).json({
+        message: "Job application link must be a valid Google Form URL (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
+      });
+    }
+  }
+
+  if (resource === "events") {
+    if (!req.body.registration_link || !isGoogleFormUrl(req.body.registration_link)) {
+      return res.status(400).json({
+        message: "Event registration link must be a valid Google Form URL (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
+      });
+    }
+  }
+
   const payload = { user_id: req.activeUser.id, status: DEFAULT_STATUS[resource] };
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) payload[field] = req.body[field];
+  }
+
+  // If company_name or experience was passed for jobs, ensure it is recorded in description
+  if (resource === "jobs" && (req.body.company_name || req.body.experience)) {
+    const headerParts = [];
+    if (req.body.company_name) headerParts.push(`Company: ${req.body.company_name.trim()}`);
+    if (req.body.experience) headerParts.push(`Experience: ${req.body.experience.trim()}`);
+    const header = headerParts.join(" | ");
+    if (payload.job_description && !payload.job_description.includes(header)) {
+      payload.job_description = `${header}\n\n${payload.job_description}`;
+    }
   }
 
   const { data, error } = await supabase

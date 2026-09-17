@@ -17,7 +17,22 @@ import {
   FaCompass,
 } from "react-icons/fa";
 
-const ALPHABET = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "#"];
+// Helper to determine if an event has passed its concluding time
+const isEventPast = (event) => {
+  if (!event || !event.event_date) return false;
+  try {
+    const datePart = event.end_date || event.event_date;
+    const timePart = event.end_time || event.event_time || "23:59:59";
+    const parsedTime = timePart.length === 5 ? `${timePart}:00` : timePart;
+    const eventEnd = new Date(`${datePart}T${parsedTime}`);
+    if (isNaN(eventEnd.getTime())) {
+      return new Date(datePart).setHours(23, 59, 59, 999) < Date.now();
+    }
+    return eventEnd.getTime() < Date.now();
+  } catch {
+    return false;
+  }
+};
 
 export default function Home() {
   const { homepageWidgets } = useTheme();
@@ -44,10 +59,12 @@ export default function Home() {
           .select("*")
           .eq("status", "approved")
           .order("event_date", { ascending: true })
-          .limit(3);
+          .limit(10);
 
-        if (eventData && eventData.length > 0) {
-          setUpcomingEvents(eventData);
+        const activeUpcoming = (eventData || []).filter((ev) => !isEventPast(ev)).slice(0, 3);
+
+        if (activeUpcoming.length > 0) {
+          setUpcomingEvents(activeUpcoming);
         } else {
           // Curated showcase if live events are being seeded
           setUpcomingEvents([
@@ -972,26 +989,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ====================================================
-          2. A-Z DIRECTORY QUICK NAVIGATOR
-      ==================================================== */}
-      <section className="az-nav-section">
-        <div className="az-nav-inner">
-          <div className="az-nav-title">A-Z Yellow Pages Index:</div>
-          <div className="az-letters-grid">
-            {ALPHABET.map((char) => (
-              <Link
-                key={char}
-                to={`/directory?letter=${encodeURIComponent(char)}`}
-                className="az-letter-link"
-                title={`Browse listings starting with ${char}`}
-              >
-                {char}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* ====================================================
           3. COMMUNITY IMPACT METRICS

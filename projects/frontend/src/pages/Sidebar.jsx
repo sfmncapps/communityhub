@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaIdCard, FaEnvelope, FaBuilding, FaSignOutAlt, FaShieldAlt, FaUsersCog, FaCalendarAlt } from "react-icons/fa";
+import { FaUser, FaIdCard, FaEnvelope, FaBriefcase, FaSignOutAlt, FaShieldAlt, FaUsersCog, FaCalendarAlt } from "react-icons/fa";
 
 const Sidebar = ({ activePage, setActivePage, onLogout }) => {
   const navigate = useNavigate();
@@ -36,10 +36,10 @@ const Sidebar = ({ activePage, setActivePage, onLogout }) => {
         </li>
 
         <li
-          className={activePage === "create-collective" ? "active" : ""}
-          onClick={() => setActivePage("create-collective")}
+          className={activePage === "my-jobs" || activePage === "create-collective" ? "active" : ""}
+          onClick={() => setActivePage("my-jobs")}
         >
-          <FaBuilding /> My Collectives
+          <FaBriefcase /> My Jobs
         </li>
 
         <li

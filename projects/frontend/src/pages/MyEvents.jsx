@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import supabase from "../config/supabaseClient";
 
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const GOOGLE_FORM_REGEX = /^(https?:\/\/)?(forms\.gle\/[a-zA-Z0-9_-]+|(docs|drive)\.google\.com\/forms\/[^\s]+)/i;
+
 const EVENT_CATEGORIES = {
   "Community Event": [
     "Meetup",
@@ -95,11 +98,44 @@ const MyEvents = () => {
   }, [events, statusFilter]);
 
   const getCurrentUser = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    setCurrentUser(user || null);
+      if (user) {
+        setCurrentUser(user);
+        return;
+      }
+
+      const cached = localStorage.getItem("user");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.id) {
+          setCurrentUser(parsed);
+          return;
+        }
+      }
+
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await fetch(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem("user", JSON.stringify(data.user));
+            return;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    setCurrentUser(null);
   };
 
   const fetchMyEvents = async () => {
@@ -158,6 +194,12 @@ const MyEvents = () => {
     if (!formData.venue_name.trim()) return "Venue name is required.";
     if (!formData.city.trim()) return "City is required.";
     if (!formData.state.trim()) return "State is required.";
+    if (!formData.registration_link || !formData.registration_link.trim()) {
+      return "Event registration link is required. Please provide a Google Form link.";
+    }
+    if (!GOOGLE_FORM_REGEX.test(formData.registration_link.trim())) {
+      return "Registration link must be a valid Google Form link (e.g. https://forms.gle/... or https://docs.google.com/forms/...)";
+    }
     if (!currentUser) return "Please login first.";
 
     return null;
@@ -166,19 +208,32 @@ const MyEvents = () => {
   const uploadBanner = async (file) => {
     if (!file) return null;
 
-    const ext = file.name.split(".").pop();
-    const fileName = `event-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const filePath = `event-banners/${fileName}`;
+    try {
+      const ext = file.name.split(".").pop();
+      const fileName = `event-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const filePath = `event-banners/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("event-media")
-      .upload(filePath, file);
+      const { error: uploadError } = await supabase.storage
+        .from("event-media")
+        .upload(filePath, file, { upsert: true });
 
-    if (uploadError) throw uploadError;
+      if (!uploadError) {
+        const { data } = supabase.storage.from("event-media").getPublicUrl(filePath);
+        if (data?.publicUrl) return data.publicUrl;
+      } else {
+        console.warn("Storage upload notice (bucket missing or policy blocked), falling back to data URL:", uploadError.message);
+      }
+    } catch (storageErr) {
+      console.warn("Storage upload exception, fallback to data URL:", storageErr.message);
+    }
 
-    const { data } = supabase.storage.from("event-media").getPublicUrl(filePath);
-
-    return data?.publicUrl || null;
+    // Graceful fallback: convert to base64 Data URL so event submission never crashes on missing bucket!
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -218,27 +273,61 @@ const MyEvents = () => {
         city: formData.city.trim(),
         state: formData.state.trim(),
         zip_code: formData.zip_code.trim() || null,
-        registration_link: formData.registration_link.trim() || null,
+        registration_link: formData.registration_link.trim(),
         ticket_price: formData.entry_type === "Paid" ? formData.ticket_price || null : null,
         entry_type: formData.entry_type,
         banner_url: bannerUrl,
         status: "pending",
       };
 
-      const { error } = await supabase.from("events").insert([payload]);
+      const token = localStorage.getItem("token");
+      let saved = false;
 
-      if (error) throw error;
+      // 1. Try authenticated backend API
+      if (token) {
+        try {
+          const res = await fetch(`${API}/events`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          const resData = await res.json();
+          if (res.ok) {
+            saved = true;
+          } else if (res.status !== 401 && res.status !== 403) {
+            throw new Error(resData.message || "Failed to submit event to server");
+          }
+        } catch (apiErr) {
+          if (!saved && apiErr.message && !apiErr.message.includes("401")) {
+            console.warn("Backend API submit notice:", apiErr.message);
+          }
+        }
+      }
+
+      // 2. Fallback to Supabase direct insert
+      if (!saved) {
+        const { error } = await supabase.from("events").insert([payload]);
+        if (error) throw error;
+      }
 
       setMessage({
         type: "success",
-        text: "Event submitted successfully. It is now pending admin approval.",
+        text: "Event submitted successfully! It is now pending admin approval.",
       });
 
       setFormData(INITIAL_FORM);
+      fetchMyEvents();
     } catch (error) {
+      let errMsg = error.message || "Failed to submit event.";
+      if (errMsg.includes("row-level security policy") || errMsg.includes("42501")) {
+        errMsg = "Database Permission Notice: Supabase 'events' table has Row Level Security (RLS) enabled. To allow event submissions, please run the SQL policy in your Supabase SQL Editor (see instructions) or configure the service_role key in backend/.env.";
+      }
       setMessage({
         type: "error",
-        text: error.message || "Failed to submit event.",
+        text: errMsg,
       });
     } finally {
       setSubmitting(false);
@@ -997,15 +1086,21 @@ const MyEvents = () => {
                   </div>
 
                   <div className="eventsFieldBlock">
-                    <label className="eventsLabel">Registration Link</label>
+                    <label className="eventsLabel">
+                      Registration Link (Google Form Link Required) <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
                     <input
                       type="url"
                       name="registration_link"
                       className="eventsInput"
                       value={formData.registration_link}
                       onChange={handleChange}
-                      placeholder="Enter registration link"
+                      placeholder="https://forms.gle/... or https://docs.google.com/forms/..."
+                      required
                     />
+                    <div className="eventsHint" style={{ color: "#0284c7" }}>
+                      📋 Only Google Form links are accepted for event registration.
+                    </div>
                   </div>
                 </div>
 

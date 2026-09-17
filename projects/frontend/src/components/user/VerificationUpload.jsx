@@ -4,7 +4,9 @@ import supabase from "../../config/supabaseClient";
 export default function VerificationUpload() {
   const [status, setStatus] = useState("unverified");
   const [notes, setNotes] = useState("");
-  const [idType, setIdType] = useState("driver_license");
+  const [accountRole, setAccountRole] = useState("employer"); // 'employer' | 'employee'
+  const [companyName, setCompanyName] = useState("");
+  const [idType, setIdType] = useState("company_registration");
   const [redactedUrl, setRedactedUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,21 @@ export default function VerificationUpload() {
           if (data.verification_notes) setNotes(data.verification_notes);
           if (data.redacted_id_url && !redactedUrl) setRedactedUrl(data.redacted_id_url);
           if (data.id_type) setIdType(data.id_type);
+          if (data.role === "employer") {
+            setAccountRole("employer");
+          } else if (data.role === "employee" || data.role === "user") {
+            setAccountRole(data.role === "employer" ? "employer" : "employee");
+          }
+          if (data.company_name) setCompanyName(data.company_name);
+        }
+      } else {
+        const cachedUser = localStorage.getItem("user");
+        if (cachedUser) {
+          try {
+            const u = JSON.parse(cachedUser);
+            if (u.role === "employer") setAccountRole("employer");
+            if (u.company_name) setCompanyName(u.company_name);
+          } catch {}
         }
       }
     } catch (e) {
@@ -89,26 +106,45 @@ export default function VerificationUpload() {
       let user = authData?.user;
 
       if (!user) {
-        const sessionToken = localStorage.getItem("token");
-        if (sessionToken) {
-          // Parse basic user info if token exists
-          user = { id: "user_session" };
+        const cached = localStorage.getItem("user");
+        if (cached) {
+          try {
+            user = JSON.parse(cached);
+          } catch {}
         }
       }
 
       let filePath = redactedUrl;
 
-      // 1. Storage Upload: Save file into 'id-documents' bucket
-      if (selectedFile && user?.id) {
-        const fileExt = selectedFile.name.split(".").pop() || "jpg";
-        filePath = `${user.id}/${Date.now()}_id.${fileExt}`;
+      // 1. Storage Upload: Save file into 'id-documents' bucket with graceful fallback
+      if (selectedFile) {
+        try {
+          const fileExt = selectedFile.name.split(".").pop() || "jpg";
+          const uid = user?.id || "guest";
+          const sPath = `${uid}/${Date.now()}_id.${fileExt}`;
 
-        const { error: uploadErr } = await supabase.storage
-          .from("id-documents")
-          .upload(filePath, selectedFile, { upsert: true });
+          const { error: uploadErr } = await supabase.storage
+            .from("id-documents")
+            .upload(sPath, selectedFile, { upsert: true });
 
-        if (uploadErr) {
-          console.warn("Storage upload warning:", uploadErr.message);
+          if (!uploadErr) {
+            const { data: pubData } = supabase.storage.from("id-documents").getPublicUrl(sPath);
+            filePath = pubData?.publicUrl || sPath;
+          } else {
+            console.warn("Storage upload notice (falling back to data URL):", uploadErr.message);
+          }
+        } catch (err) {
+          console.warn("Storage upload exception, fallback to data URL:", err);
+        }
+
+        // If upload wasn't successful or bucket missing, convert to data URL
+        if (!filePath || filePath.startsWith("blob:")) {
+          filePath = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve(redactedUrl);
+            reader.readAsDataURL(selectedFile);
+          });
         }
       }
 
@@ -121,7 +157,7 @@ export default function VerificationUpload() {
         });
 
         if (insertErr) {
-          console.warn("id_verifications table insert warning:", insertErr.message);
+          console.warn("id_verifications insert notice:", insertErr.message);
         }
       }
 
@@ -138,14 +174,32 @@ export default function VerificationUpload() {
             body: JSON.stringify({
               redacted_id_url: filePath,
               id_type: idType,
+              role: accountRole,
+              company_name: companyName,
             }),
           });
         } catch (apiErr) {
-          console.warn("API sync error:", apiErr.message);
+          console.warn("API sync notice:", apiErr.message);
         }
       }
 
-      setMsg({ type: "success", text: "Redacted Driver's License / ID submitted successfully for approval!" });
+      // 4. Update local user cache
+      const cached = localStorage.getItem("user");
+      if (cached) {
+        try {
+          const u = JSON.parse(cached);
+          u.role = accountRole;
+          u.company_name = companyName;
+          u.verification_status = "pending";
+          localStorage.setItem("user", JSON.stringify(u));
+          window.dispatchEvent(new Event("profile-updated"));
+        } catch {}
+      }
+
+      setMsg({
+        type: "success",
+        text: `Official ${accountRole === "employer" ? "Employer" : "Employee"} ID submitted successfully! It is now pending administrator review.`,
+      });
       setStatus("pending");
     } catch (err) {
       setMsg({ type: "error", text: err.message });
@@ -169,9 +223,9 @@ export default function VerificationUpload() {
     <div className="verification-card">
       <div className="verification-header">
         <div>
-          <h3 style={{ margin: 0 }}>Identity Document Verification</h3>
+          <h3 style={{ margin: 0 }}>Employer & Organization ID Verification</h3>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-            Submit a redacted government-issued Driver's License or ID for Admin verification badge
+            Official verification is required for <strong>Employers</strong> to post jobs. Employees and job seekers do <em>not</em> need to submit any official ID.
           </p>
         </div>
         <span
@@ -188,82 +242,116 @@ export default function VerificationUpload() {
         </div>
       )}
 
-      {/* REDACTION GUIDELINES */}
-      <div className="redaction-guide">
-        <h4>🔒 Document Redaction Guidelines:</h4>
-        <ul>
-          <li><strong>DO:</strong> Ensure your Full Name, Photo, and Expiration Date are clearly visible.</li>
-          <li><strong>MUST REDACT:</strong> Black out, blur, or cover sensitive identifiers (Driver's License / ID Number, SSN, DOB).</li>
-          <li>Files uploaded to Supabase Storage bucket <code>id-documents</code> are stored securely.</li>
-        </ul>
-      </div>
-
-      {msg && (
-        <div className={`alert-msg ${msg.type}`}>
-          {msg.text}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="verification-form">
-        <div className="form-group">
-          <label>Document Type:</label>
-          <select value={idType} onChange={(e) => setIdType(e.target.value)}>
-            <option value="driver_license">Driver's License (Redacted)</option>
-            <option value="passport">Passport (Redacted)</option>
-            <option value="national_id">State / National ID (Redacted)</option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label>Upload Redacted ID Document File (Supabase Storage):</label>
-          <input
-            type="file"
-            accept="image/*,.pdf"
-            onChange={handleFileChange}
-            disabled={status === "verified"}
-          />
-        </div>
-
-        <div className="form-group">
-          <label>Or Paste Redacted Image URL / Cloud Storage Link:</label>
-          <input
-            type="text"
-            placeholder="https://example.com/uploads/my-redacted-id.jpg"
-            value={typeof redactedUrl === "string" && !redactedUrl.startsWith("blob:") ? redactedUrl : ""}
-            onChange={(e) => {
-              setSelectedFile(null);
-              setRedactedUrl(e.target.value);
-            }}
-            disabled={status === "verified"}
-          />
-        </div>
-
-        {redactedUrl && (
-          <div className="preview-box">
-            <span style={{ fontSize: 12, fontWeight: "bold", display: "block", marginBottom: 6 }}>
-              Redacted ID Image Document Preview:
-            </span>
-            <img
-              src={redactedUrl}
-              alt="Redacted ID Preview"
-              className="preview-img"
-              onError={(e) => (e.target.style.display = "none")}
-            />
+      {accountRole === "employee" ? (
+        <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "20px", marginTop: "16px" }}>
+          <h4 style={{ color: "#065f46", margin: "0 0 6px" }}>✓ Employee / Job Seeker Mode</h4>
+          <p style={{ color: "#047857", fontSize: "14px", margin: "0 0 14px", lineHeight: "1.5" }}>
+            Good news! As an employee or candidate, <strong>you do not need to verify an official ID</strong>. You have full access to explore the community, view verified job listings, and apply directly using recruiters' Google Forms.
+          </p>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <a href="/jobs" style={{ display: "inline-block", background: "#047857", color: "#fff", padding: "9px 18px", borderRadius: "8px", textDecoration: "none", fontWeight: "700", fontSize: "13px" }}>
+              Explore Jobs ↗
+            </a>
+            <button
+              type="button"
+              onClick={() => { setAccountRole("employer"); setIdType("company_registration"); }}
+              style={{ background: "#fff", border: "1px solid #cbd5e1", padding: "9px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "13px", cursor: "pointer" }}
+            >
+              Switch to Employer Verification
+            </button>
           </div>
-        )}
+        </div>
+      ) : (
+        <>
+          {/* REDACTION GUIDELINES */}
+          <div className="redaction-guide">
+            <h4>🔒 Organization Document Guidelines:</h4>
+            <ul>
+              <li><strong>Acceptable Documents:</strong> Certificate of Incorporation, Business Registration, Tax ID / GST, Commercial License, or HR Official ID.</li>
+              <li><strong>Privacy:</strong> Please redact any personal banking or sensitive identification numbers not needed for corporate verification.</li>
+            </ul>
+          </div>
 
-        <button
-          type="submit"
-          className="submit-btn"
-          disabled={submitting || status === "verified"}
-        >
-          {submitting
-            ? "Uploading & Submitting..."
-            : status === "pending"
-            ? "Re-submit Redacted Document"
-            : "Upload & Submit for Verification"}
-        </button>
-      </form>
+          {msg && (
+            <div className={`alert-msg ${msg.type}`}>
+              {msg.text}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="verification-form">
+            <div className="form-group">
+              <label>Company / Organization Name <span style={{ color: "#ef4444" }}>*</span></label>
+              <input
+                type="text"
+                placeholder="e.g. Acme Innovations Pvt Ltd"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+                disabled={status === "verified"}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Official Document Type:</label>
+              <select value={idType} onChange={(e) => setIdType(e.target.value)}>
+                <option value="company_registration">Business / Incorporation Registration Document</option>
+                <option value="tax_id">Tax ID / Business PAN / GST Certificate</option>
+                <option value="business_license">Commercial Operating License</option>
+                <option value="employer_hr_id">HR / Recruiter Official Employee ID Card</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Upload Official Employer Document File (Image / PDF):</label>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={handleFileChange}
+                disabled={status === "verified"}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Or Paste Redacted Image URL / Cloud Storage Link:</label>
+              <input
+                type="text"
+                placeholder="https://example.com/uploads/my-redacted-id.jpg"
+                value={typeof redactedUrl === "string" && !redactedUrl.startsWith("blob:") ? redactedUrl : ""}
+                onChange={(e) => {
+                  setSelectedFile(null);
+                  setRedactedUrl(e.target.value);
+                }}
+                disabled={status === "verified"}
+              />
+            </div>
+
+            {redactedUrl && (
+              <div className="preview-box">
+                <span style={{ fontSize: 12, fontWeight: "bold", display: "block", marginBottom: 6 }}>
+                  Document Image Preview:
+                </span>
+                <img
+                  src={redactedUrl}
+                  alt="Document Preview"
+                  style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="submit-btn"
+              disabled={submitting || status === "verified"}
+            >
+              {submitting
+                ? "Uploading & Submitting..."
+                : status === "pending"
+                ? "Re-submit Employer Document"
+                : "Submit Employer Verification"}
+            </button>
+          </form>
+        </>
+      )}
 
       <style>{`
         .verification-card {

@@ -148,6 +148,24 @@ export default function Events() {
           </div>
         </div>
 
+        {/* Main Timing Toggle: Upcoming vs Previous Events */}
+        <div className="ev-main-toggle">
+          <button
+            type="button"
+            className={`ev-toggle-btn ${timing === "upcoming" ? "active" : ""}`}
+            onClick={() => setTiming("upcoming")}
+          >
+            🌟 Upcoming Events
+          </button>
+          <button
+            type="button"
+            className={`ev-toggle-btn ${timing === "past" ? "active" : ""}`}
+            onClick={() => setTiming("past")}
+          >
+            📜 Previous Events
+          </button>
+        </div>
+
         {/* Category Pills */}
         <div className="ev-categories-pills">
           {CATEGORIES.map((cat) => (
@@ -166,10 +184,10 @@ export default function Events() {
       <div className="ev-content-container">
         <div className="ev-header-row">
           <h2>
-            {selectedCategory === "All" ? "Upcoming Events" : selectedCategory}
+            {timing === "past" ? "Previous & Concluded Events" : (selectedCategory === "All" ? "Upcoming Events" : selectedCategory)}
             <span className="ev-count-badge">{events.length}</span>
           </h2>
-          {timing !== "upcoming" && (
+          {timing !== "upcoming" && timing !== "past" && (
             <span className="ev-active-timing-pill">Filter: {timing.replace("_", " ")}</span>
           )}
         </div>
@@ -182,11 +200,13 @@ export default function Events() {
         ) : events.length === 0 ? (
           <div className="ev-empty-card">
             <div className="ev-empty-icon">📅</div>
-            <h3>No events found</h3>
+            <h3>No {timing === "past" ? "previous" : "upcoming"} events found</h3>
             <p>
               {search.trim()
                 ? `No events matching "${search}". Try adjusting your keywords or category filters.`
-                : "No events are currently scheduled under this filter."}
+                : timing === "past"
+                ? "No concluded events recorded yet."
+                : "No upcoming events scheduled right now. Host one today!"}
             </p>
             <div className="ev-empty-actions">
               <button
@@ -200,7 +220,7 @@ export default function Events() {
                 Reset Filters
               </button>
               <button className="btn-primary" onClick={handleHostEvent}>
-                <FaPlus /> Host the First Event
+                <FaPlus /> Host an Event
               </button>
             </div>
           </div>
@@ -224,6 +244,9 @@ export default function Events() {
                     <FaTicketAlt /> {ev.entry_type === "Paid" ? ev.ticket_price || "Paid" : "Free Entry"}
                   </span>
                   <span className="ev-cat-badge">{ev.category}</span>
+                  {ev.is_concluded && (
+                    <span className="ev-past-watermark">Ended</span>
+                  )}
                 </div>
 
                 <div className="ev-card-body">
@@ -259,8 +282,26 @@ export default function Events() {
 
                   <div className="ev-card-footer">
                     <Link to={`/events/${ev.id}`} className="btn-view-details">
-                      View Details & RSVP →
+                      Details →
                     </Link>
+
+                    {ev.registration_link && !ev.is_concluded ? (
+                      <a
+                        href={
+                          ev.registration_link.startsWith("http")
+                            ? ev.registration_link
+                            : `https://${ev.registration_link}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-google-form-rsvp"
+                        title="Register via Google Form"
+                      >
+                        Register (Google Form) ↗
+                      </a>
+                    ) : ev.is_concluded ? (
+                      <span className="ev-concluded-chip">Concluded</span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -428,6 +469,73 @@ export default function Events() {
           color: #1e293b;
           outline: none;
           cursor: pointer;
+        }
+
+        .ev-main-toggle {
+          display: flex;
+          gap: 12px;
+          margin-top: 14px;
+        }
+        .ev-toggle-btn {
+          flex: 1;
+          padding: 12px 20px;
+          border-radius: 12px;
+          border: 2px solid #e2e8f0;
+          background: #ffffff;
+          color: #334155;
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .ev-toggle-btn.active {
+          background: #0f766e;
+          color: #ffffff;
+          border-color: #0f766e;
+          box-shadow: 0 4px 14px rgba(15, 118, 110, 0.25);
+        }
+        .ev-past-watermark {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          background: rgba(15, 23, 42, 0.85);
+          color: #fca5a5;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          padding: 4px 10px;
+          border-radius: 999px;
+          letter-spacing: 0.5px;
+        }
+        .btn-google-form-rsvp {
+          background: #2563eb;
+          color: #ffffff;
+          text-decoration: none;
+          font-size: 13px;
+          font-weight: 700;
+          padding: 8px 14px;
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: background 0.15s;
+        }
+        .btn-google-form-rsvp:hover {
+          background: #1d4ed8;
+          color: #ffffff;
+        }
+        .ev-concluded-chip {
+          background: #f1f5f9;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 6px 12px;
+          border-radius: 6px;
+          border: 1px solid #e2e8f0;
         }
 
         .ev-categories-pills {

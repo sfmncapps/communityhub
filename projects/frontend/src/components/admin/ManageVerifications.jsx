@@ -78,15 +78,31 @@ export default function ManageVerifications() {
       // Update status in Supabase id_verifications table
       const { data: currentAuth } = await supabase.auth.getUser();
       const reviewerId = currentAuth?.user?.id || null;
+      const isApproved = status === "verified" || status === "approved";
 
       await supabase
         .from("id_verifications")
         .update({
-          status: status === "verified" || status === "approved" ? "approved" : "rejected",
+          status: isApproved ? "approved" : "rejected",
           reviewed_at: new Date().toISOString(),
           reviewed_by: reviewerId,
         })
         .or(`id.eq.${idOrUserId},user_id.eq.${idOrUserId}`);
+
+      // If approved, update active user's role and verification status
+      if (isApproved) {
+        const item = pendingList.find((p) => p.id === idOrUserId || p.user_id === idOrUserId);
+        const targetUserId = item?.user_id || idOrUserId;
+        const targetRole = item?.role; // 'employer' or 'employee'
+
+        const updatePayload = { verification_status: "verified" };
+        if (targetRole) updatePayload.role = targetRole;
+
+        await supabase
+          .from("users_active")
+          .update(updatePayload)
+          .or(`auth_id.eq.${targetUserId},id.eq.${targetUserId}`);
+      }
 
       // Backend API call sync if token present
       const token = localStorage.getItem("token");
@@ -98,7 +114,7 @@ export default function ManageVerifications() {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ status: status === "approved" ? "verified" : status, notes }),
+            body: JSON.stringify({ status: isApproved ? "verified" : status, notes }),
           });
         } catch (err) {
           console.warn("API review sync warning:", err.message);
@@ -133,9 +149,14 @@ export default function ManageVerifications() {
                 <div>
                   <h4>{user.name || user.username || `User ID: ${(user.user_id || "").slice(0, 8)}`}</h4>
                   <p className="email-text">{user.email ? user.email : user.submitted_at ? `Submitted: ${new Date(user.submitted_at).toLocaleDateString()}` : ""} {user.phone ? `| ${user.phone}` : ""}</p>
-                  {user.company_name && <p className="company-text">Company: {user.company_name}</p>}
+                  {user.company_name && <p className="company-text">🏢 Company: <strong>{user.company_name}</strong></p>}
                 </div>
-                <span className="type-badge">{user.id_type || "Driver's License"}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <span className={`role-pill ${(user.role || "").toLowerCase() === "employer" ? "employer" : "employee"}`}>
+                    {((user.role || "EMPLOYEE")).toUpperCase()}
+                  </span>
+                  <span className="type-badge">{user.id_type || "Driver's License"}</span>
+                </div>
               </div>
 
               {/* DOCUMENT IMAGE PREVIEW */}
@@ -231,6 +252,24 @@ export default function ManageVerifications() {
           margin: 2px 0;
           font-size: 12px;
           color: #64748b;
+        }
+
+        .role-pill {
+          font-size: 10px;
+          font-weight: 800;
+          padding: 3px 8px;
+          border-radius: 6px;
+          letter-spacing: 0.5px;
+        }
+        .role-pill.employer {
+          background: #f3e8ff;
+          color: #7e22ce;
+          border: 1px solid #d8b4fe;
+        }
+        .role-pill.employee {
+          background: #ecfdf5;
+          color: #047857;
+          border: 1px solid #a7f3d0;
         }
 
         .type-badge {

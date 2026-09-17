@@ -156,7 +156,6 @@ const ManageDirectory = () => {
         state_record_notes: verifyModal.notes.trim() || null,
         verification_status: verifyModal.verificationStatus,
         verified_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       };
       if (verifyModal.verificationStatus === "verified" && verifyModal.autoApprove) {
         updates.status = "approved";
@@ -199,7 +198,7 @@ const ManageDirectory = () => {
 
       await supabase
         .from("collectives")
-        .update({ status, updated_at: new Date().toISOString() })
+        .update({ status })
         .eq("id", id);
 
       showToast(`Collective marked as ${status}`, "success");

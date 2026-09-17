@@ -9,29 +9,42 @@ const supabase = createClient(
 // POST /api/verification/upload (User submits ID verification document)
 export const submitVerification = async (req, res) => {
   try {
-    const { redacted_id_url, id_document_url, id_type = "driver_license" } = req.body;
+    const { redacted_id_url, id_document_url, id_type = "driver_license", role, company_name } = req.body;
 
     if (!redacted_id_url && !id_document_url) {
-      return res.status(400).json({ message: "Redacted ID document URL is required" });
+      return res.status(400).json({ message: "Official ID document URL or image is required" });
     }
+
+    const updates = {
+      redacted_id_url: redacted_id_url || id_document_url,
+      id_document_url: id_document_url || redacted_id_url,
+      id_type,
+      verification_status: "pending",
+      verification_notes: null,
+    };
+    if (role) updates.role = role === "employer" ? "employer" : "user";
+    if (company_name) updates.company_name = company_name.trim();
 
     const { data: updatedUser, error } = await supabase
       .from("users_active")
-      .update({
-        redacted_id_url: redacted_id_url || id_document_url,
-        id_document_url: id_document_url || redacted_id_url,
-        id_type,
-        verification_status: "pending",
-        verification_notes: null,
-      })
+      .update(updates)
       .eq("id", req.activeUser.id)
-      .select("id, name, email, verification_status, redacted_id_url, id_type")
+      .select("id, name, email, verification_status, redacted_id_url, id_type, role, company_name")
       .single();
 
     if (error) return res.status(500).json({ message: error.message });
 
+    // Also insert into id_verifications table for audit/history
+    try {
+      await supabase.from("id_verifications").insert({
+        user_id: req.activeUser.id,
+        document_url: redacted_id_url || id_document_url,
+        status: "pending",
+      });
+    } catch {}
+
     return res.json({
-      message: "ID document submitted for admin verification",
+      message: "Official ID document submitted for admin verification",
       user: updatedUser,
     });
   } catch (e) {
@@ -44,7 +57,7 @@ export const getMyVerificationStatus = async (req, res) => {
   try {
     const { data: user, error } = await supabase
       .from("users_active")
-      .select("id, name, email, verification_status, id_type, redacted_id_url, verification_notes, verified_at")
+      .select("id, name, email, role, company_name, verification_status, id_type, redacted_id_url, verification_notes, verified_at")
       .eq("id", req.activeUser.id)
       .maybeSingle();
 
@@ -52,6 +65,8 @@ export const getMyVerificationStatus = async (req, res) => {
 
     return res.json({
       verification_status: user?.verification_status || "unverified",
+      role: user?.role || "user",
+      company_name: user?.company_name || "",
       verification_notes: user?.verification_notes || "",
       verified_at: user?.verified_at || null,
       id_type: user?.id_type || null,
@@ -67,7 +82,7 @@ export const getPendingVerifications = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("users_active")
-      .select("id, username, name, email, phone, company_name, verification_status, id_type, redacted_id_url, id_document_url, created_at")
+      .select("id, username, name, email, phone, role, company_name, verification_status, id_type, redacted_id_url, id_document_url, created_at")
       .eq("verification_status", "pending")
       .order("created_at", { ascending: false });
 

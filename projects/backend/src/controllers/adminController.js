@@ -230,7 +230,7 @@ export const updateEventStatus = async (req, res) => {
 
     const { data, error } = await supabase
       .from("events")
-      .update({ status: status.toLowerCase(), updated_at: new Date().toISOString() })
+      .update({ status: status.toLowerCase() })
       .eq("id", id)
       .select()
       .single();
@@ -254,6 +254,72 @@ export const deleteEvent = async (req, res) => {
 
     if (error) return res.status(500).json({ message: error.message });
     return res.json({ message: "Event deleted successfully" });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// Jobs Moderation
+// GET /api/admin/jobs?status=pending|approved|all
+export const getAdminJobs = async (req, res) => {
+  try {
+    const { status = "pending", q } = req.query;
+    let query = supabase.from("jobs").select("*").order("created_at", { ascending: false });
+
+    if (status && status !== "all") {
+      query = query.eq("status", status.toLowerCase());
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ message: error.message });
+
+    let results = data || [];
+    if (q && q.trim()) {
+      const term = q.trim().toLowerCase();
+      results = results.filter(
+        (job) =>
+          (job.job_title || "").toLowerCase().includes(term) ||
+          (job.job_description || "").toLowerCase().includes(term) ||
+          (job.location || "").toLowerCase().includes(term) ||
+          (job.job_type || "").toLowerCase().includes(term)
+      );
+    }
+    return res.json({ jobs: results });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// PUT /api/admin/jobs/:id/status (Admin & Superadmin: approve/reject job)
+export const updateJobStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const valid = ["pending", "approved", "rejected"];
+    if (!status || !valid.includes(status.toLowerCase())) {
+      return res.status(400).json({ message: `Status must be one of: ${valid.join(", ")}` });
+    }
+    const { data, error } = await supabase
+      .from("jobs")
+      .update({ status: status.toLowerCase() })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ message: error.message });
+    return res.json({ message: `Job status updated to ${status}`, job: data });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+// DELETE /api/admin/jobs/:id (Admin & Superadmin: delete job)
+export const deleteJob = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("jobs").delete().eq("id", id);
+    if (error) return res.status(500).json({ message: error.message });
+    return res.json({ message: "Job deleted successfully" });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }

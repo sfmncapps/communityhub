@@ -98,6 +98,22 @@ export default function EventDetails() {
   }
 
   const isPending = event.status !== "approved";
+  const isConcluded = (() => {
+    if (!event || !event.event_date) return false;
+    try {
+      const datePart = event.end_date || event.event_date;
+      const timePart = event.end_time || event.event_time || "23:59:59";
+      const parsedTime = timePart.length === 5 ? `${timePart}:00` : timePart;
+      const eventEnd = new Date(`${datePart}T${parsedTime}`);
+      if (isNaN(eventEnd.getTime())) {
+        return new Date(datePart).setHours(23, 59, 59, 999) < Date.now();
+      }
+      return eventEnd.getTime() < Date.now();
+    } catch {
+      return false;
+    }
+  })();
+
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     `${event.venue_name}, ${event.address || ""}, ${event.city}, ${event.state}`
   )}`;
@@ -120,6 +136,13 @@ export default function EventDetails() {
       {isPending && (
         <div className="ev-pending-notice">
           ⚠️ This event has a status of <strong>"{event.status}"</strong> and is awaiting administrator approval before appearing in public listings.
+        </div>
+      )}
+
+      {/* CONCLUDED NOTICE */}
+      {isConcluded && (
+        <div className="ev-pending-notice" style={{ background: "#f1f5f9", borderColor: "#cbd5e1", color: "#475569" }}>
+          ⏰ <strong>This event has concluded.</strong> It has been automatically archived into Previous Events, and registration is now closed.
         </div>
       )}
 
@@ -260,7 +283,15 @@ export default function EventDetails() {
               </div>
             </div>
 
-            {event.registration_link ? (
+            {isConcluded ? (
+              <button
+                className="btn-rsvp-primary"
+                disabled
+                style={{ background: "#94a3b8", cursor: "not-allowed", opacity: 0.85 }}
+              >
+                Event Concluded (Closed)
+              </button>
+            ) : event.registration_link ? (
               <a
                 href={
                   event.registration_link.startsWith("http")
@@ -271,7 +302,7 @@ export default function EventDetails() {
                 rel="noreferrer"
                 className="btn-rsvp-primary"
               >
-                Register & RSVP Now <FaExternalLinkAlt />
+                Register on Google Form 📋 <FaExternalLinkAlt />
               </a>
             ) : (
               <button

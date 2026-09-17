@@ -4,60 +4,58 @@ import { useNavigate } from "react-router-dom";
 
 const DEFAULT_SAMPLE_JOBS = [
   {
-    id: "1",
-    job_title: "Web developemnt",
-    job_description: "Design a websites",
-    job_type: "full time",
-    location: "Chicago",
-    apply_link: "#"
+    id: "sample-1",
+    job_title: "Web Development",
+    company_name: "Tech Solutions",
+    job_description: "Design and maintain modern responsive websites.",
+    job_type: "Full Time",
+    location: "Chicago, IL",
+    apply_link: "https://docs.google.com/forms"
   },
   {
-    id: "2",
-    job_title: "Manual testing",
-    job_description: "Testing",
-    job_type: "Part time",
-    location: "mangalore",
-    apply_link: "#"
+    id: "sample-2",
+    job_title: "Manual QA Engineer",
+    company_name: "Quality Labs",
+    job_description: "End-to-end regression and integration testing.",
+    job_type: "Part Time",
+    location: "Mangalore",
+    apply_link: "https://docs.google.com/forms"
   },
   {
-    id: "3",
-    job_title: "Java developer",
-    job_description: "Development",
-    job_type: "Full time",
-    location: "Hyd",
-    apply_link: "#"
-  },
-  {
-    id: "4",
-    job_title: "Business Development Executive",
-    job_description: "Develop the business",
-    job_type: "Full time",
-    location: "Chennai",
-    apply_link: "#"
-  },
-  {
-    id: "5",
-    job_title: "Python Developer",
-    job_description: "Backend development and execution",
-    job_type: "Full time",
-    location: "Mumbai",
-    apply_link: "#"
-  },
-  {
-    id: "6",
-    job_title: "Java Developer",
-    job_description: "Backend development",
-    job_type: "Part time",
-    location: "Andhra Pradesh",
-    apply_link: "#"
-  },
-  {
-    id: "7",
-    job_title: "SEO Analyst",
-    job_description: "Search Engine Optimization",
+    id: "sample-3",
+    job_title: "Java Full Stack Developer",
+    company_name: "Cloud Enterprises",
+    job_description: "Spring Boot, Microservices, and cloud deployment.",
     job_type: "Full Time",
     location: "Hyderabad",
-    apply_link: "#"
+    apply_link: "https://docs.google.com/forms"
+  },
+  {
+    id: "sample-4",
+    job_title: "Business Development Executive",
+    company_name: "Growth Agency",
+    job_description: "Client relations, partnership sales, and business expansion.",
+    job_type: "Full Time",
+    location: "Chennai",
+    apply_link: "https://docs.google.com/forms"
+  },
+  {
+    id: "sample-5",
+    job_title: "Python Developer",
+    company_name: "DataTech Innovations",
+    job_description: "Backend API development, data pipelines, and automation.",
+    job_type: "Full Time",
+    location: "Mumbai",
+    apply_link: "https://docs.google.com/forms"
+  },
+  {
+    id: "sample-6",
+    job_title: "Senior SEO Analyst",
+    company_name: "Organic Reach Co",
+    job_description: "Search engine optimization, keyword strategy, and web traffic growth.",
+    job_type: "Full Time",
+    location: "Hyderabad",
+    apply_link: "https://docs.google.com/forms"
   }
 ];
 
@@ -65,12 +63,15 @@ const Jobs = () => {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState(DEFAULT_SAMPLE_JOBS);
   const [searchTerm, setSearchTerm] = useState("");
+  const [user, setUser] = useState(null);
 
   const fetchJobs = async () => {
     try {
+      // ONLY fetch jobs that have status === 'approved' for public viewing
       const { data, error } = await supabase
         .from("jobs")
         .select("*")
+        .eq("status", "approved")
         .order("created_at", { ascending: false });
 
       if (!error && data && data.length > 0) {
@@ -79,14 +80,46 @@ const Jobs = () => {
         setJobs(DEFAULT_SAMPLE_JOBS);
       }
     } catch (err) {
-      console.error("Error fetching jobs, displaying fallback jobs:", err);
+      console.error("Error fetching approved jobs, displaying fallback jobs:", err);
       setJobs(DEFAULT_SAMPLE_JOBS);
     }
   };
 
   useEffect(() => {
     fetchJobs();
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data?.user || null);
+    });
   }, []);
+
+  // Helper to parse packaged Company and Experience fields from job_description
+  const parseJobDetails = (desc = "") => {
+    let company = null;
+    let experience = null;
+    let cleanDesc = desc;
+
+    // Pattern 1: Company: X | Experience: Y
+    const inlineMatch = desc.match(/^Company:\s*([^|\n]+)\s*\|\s*Experience:\s*(.+)$/m);
+    if (inlineMatch) {
+      company = inlineMatch[1].trim();
+      experience = inlineMatch[2].trim();
+      cleanDesc = cleanDesc.replace(/^Company:[^\n]+\n?/m, "").trim();
+    } else {
+      // Pattern 2: Company: X and Experience: Y on separate lines
+      const companyMatch = desc.match(/^Company:\s*(.+)$/m);
+      if (companyMatch) company = companyMatch[1].trim();
+
+      const expMatch = desc.match(/^Experience:\s*(.+)$/m);
+      if (expMatch) experience = expMatch[1].trim();
+
+      cleanDesc = cleanDesc
+        .replace(/^Company:\s*.*\n?/m, "")
+        .replace(/^Experience:\s*.*\n?/m, "")
+        .trim();
+    }
+
+    return { company, experience, cleanDesc: cleanDesc || desc };
+  };
 
   const filteredJobs = jobs.filter((job) =>
     (job.job_title || "")
@@ -109,14 +142,41 @@ const Jobs = () => {
       <div className="jobs-hero">
         <h1>Find Your Dream Job</h1>
         <p>
-          Explore verified opportunities, filter by title, and apply instantly from our trusted job portal.
+          Explore verified opportunities, filter by title, and apply instantly using official Google Form applications.
         </p>
-        <button
-          className="hero-auth-btn"
-          onClick={() => navigate("/login")}
-        >
-          Login / Register
-        </button>
+        <div className="hero-btn-row">
+          {user ? (
+            <>
+              <button
+                className="hero-auth-btn"
+                onClick={() => navigate("/dashboard?tab=my-jobs")}
+              >
+                💼 Post a Job / My Jobs
+              </button>
+              <button
+                className="hero-secondary-btn"
+                onClick={() => navigate("/dashboard")}
+              >
+                Dashboard
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="hero-auth-btn"
+                onClick={() => navigate("/login")}
+              >
+                Login / Register
+              </button>
+              <button
+                className="hero-secondary-btn"
+                onClick={() => navigate("/login?redirect=my-jobs")}
+              >
+                💼 Employers: Post a Job
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* DARK SECTION WITH SEARCH BAR & CARDS */}
@@ -127,7 +187,7 @@ const Jobs = () => {
             <i className="fa-solid fa-magnifying-glass"></i>
             <input
               type="text"
-              placeholder="Search jobs by title..."
+              placeholder="Search jobs by title, company, location..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -135,67 +195,78 @@ const Jobs = () => {
 
           {/* JOBS GRID */}
           <div className="jobs-grid">
-            {filteredJobs.map((job) => (
-              <div key={job.id} className="job-card">
-                {/* Job Title */}
-                <div className="card-row">
-                  <i className="fa-solid fa-briefcase icon"></i>
-                  <div className="row-content">
-                    <span className="field-label">JOB TITLE</span>
-                    <h4 className="job-title-text">{job.job_title}</h4>
-                  </div>
-                </div>
+            {filteredJobs.map((job) => {
+              const { company, experience, cleanDesc } = parseJobDetails(job.job_description);
+              const displayCompany = job.company_name || company;
 
-                {/* Description */}
-                <div className="card-row">
-                  <i className="fa-solid fa-file-lines icon"></i>
-                  <div className="row-content">
-                    <span className="field-label">DESCRIPTION</span>
-                    <p className="field-value desc-text">{job.job_description}</p>
+              return (
+                <div key={job.id} className="job-card">
+                  {/* Job Title & Company */}
+                  <div className="card-row">
+                    <i className="fa-solid fa-briefcase icon"></i>
+                    <div className="row-content">
+                      <span className="field-label">JOB TITLE</span>
+                      <h4 className="job-title-text">{job.job_title}</h4>
+                      {displayCompany && (
+                        <span className="company-badge">🏢 {displayCompany}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Job Type */}
-                <div className="card-row">
-                  <i className="fa-solid fa-clock icon"></i>
-                  <div className="row-content">
-                    <span className="field-label">JOB TYPE</span>
-                    <p className="field-value">{job.job_type}</p>
+                  {/* Description */}
+                  <div className="card-row">
+                    <i className="fa-solid fa-file-lines icon"></i>
+                    <div className="row-content">
+                      <span className="field-label">DESCRIPTION</span>
+                      <p className="field-value desc-text">{cleanDesc}</p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Location */}
-                <div className="card-row">
-                  <i className="fa-solid fa-location-dot icon"></i>
-                  <div className="row-content">
-                    <span className="field-label">LOCATION</span>
-                    <p className="field-value">{job.location}</p>
+                  {/* Job Type & Experience */}
+                  <div className="card-row">
+                    <i className="fa-solid fa-clock icon"></i>
+                    <div className="row-content">
+                      <span className="field-label">JOB TYPE</span>
+                      <p className="field-value">
+                        {job.job_type}
+                        {experience && ` • Exp: ${experience}`}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Apply Now Button */}
-                <a
-                  href={job.apply_link && job.apply_link !== "#" ? job.apply_link : "#"}
-                  target={job.apply_link && job.apply_link !== "#" ? "_blank" : "_self"}
-                  rel="noopener noreferrer"
-                  className="apply-now-btn"
-                  onClick={(e) => {
-                    if (!job.apply_link || job.apply_link === "#") {
-                      e.preventDefault();
-                      alert(`Applying for position: ${job.job_title}`);
-                    }
-                  }}
-                >
-                  <i className="fa-solid fa-paper-plane"></i> Apply Now
-                </a>
-              </div>
-            ))}
+                  {/* Location */}
+                  <div className="card-row">
+                    <i className="fa-solid fa-location-dot icon"></i>
+                    <div className="row-content">
+                      <span className="field-label">LOCATION</span>
+                      <p className="field-value">{job.location || "Remote"}</p>
+                    </div>
+                  </div>
+
+                  {/* Apply on Google Form Button */}
+                  <a
+                    href={job.apply_link && job.apply_link !== "#" ? job.apply_link : "#"}
+                    target={job.apply_link && job.apply_link !== "#" ? "_blank" : "_self"}
+                    rel="noopener noreferrer"
+                    className="apply-now-btn"
+                    onClick={(e) => {
+                      if (!job.apply_link || job.apply_link === "#") {
+                        e.preventDefault();
+                        alert(`Please apply via official Google Form for: ${job.job_title}`);
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-paper-plane"></i> Apply on Google Form
+                  </a>
+                </div>
+              );
+            })}
           </div>
 
           {filteredJobs.length === 0 && (
             <div className="no-jobs">
               <i className="fa-solid fa-briefcase"></i>
-              <p>No jobs found matching your search.</p>
+              <p>No verified jobs found matching your search.</p>
             </div>
           )}
         </div>
@@ -232,6 +303,13 @@ const Jobs = () => {
           line-height: 1.5;
         }
 
+        .hero-btn-row {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
         .hero-auth-btn {
           padding: 10px 24px;
           border: none;
@@ -247,6 +325,23 @@ const Jobs = () => {
         .hero-auth-btn:hover {
           transform: translateY(-2px);
           box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+        }
+
+        .hero-secondary-btn {
+          padding: 10px 20px;
+          border: 1.5px solid rgba(255,255,255,0.8);
+          border-radius: 8px;
+          background: transparent;
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .hero-secondary-btn:hover {
+          background: rgba(255,255,255,0.15);
+          transform: translateY(-2px);
         }
 
         /* DARK SECTION WITH SEARCH BAR & CARDS GRID */
@@ -333,6 +428,7 @@ const Jobs = () => {
           display: flex;
           flex-direction: column;
           gap: 2px;
+          min-width: 0;
         }
 
         .field-label {
@@ -349,6 +445,14 @@ const Jobs = () => {
           font-weight: 700;
           color: #000000;
           line-height: 1.3;
+        }
+
+        .company-badge {
+          display: inline-block;
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: #0f766e;
+          margin-top: 2px;
         }
 
         .field-value {
@@ -438,6 +542,3 @@ const Jobs = () => {
 };
 
 export default Jobs;
-
-
-

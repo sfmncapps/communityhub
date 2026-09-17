@@ -8,6 +8,7 @@ import VerificationUpload from "../components/user/VerificationUpload";
 import CreateCollective from "../components/user/CreateCollective";
 import MessagingCenter from "./MessagingCenter";
 import MyEvents from "./MyEvents";
+import MyJobs from "./MyJobs";
 
 import "./dashboard.css";
 
@@ -38,8 +39,9 @@ const Dashboard = () => {
     switch (activePage) {
       case "verification":
         return <VerificationUpload />;
+      case "my-jobs":
       case "create-collective":
-        return <CreateCollective />;
+        return <MyJobs />;
       case "my-events":
         return <MyEvents />;
       case "messages":

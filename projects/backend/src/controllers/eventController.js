@@ -8,6 +8,28 @@ const supabase = createClient(
 // Format validators
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?[0-9\s\-()]{7,25}$/;
+export const GOOGLE_FORM_REGEX = /^(https?:\/\/)?(forms\.gle\/[a-zA-Z0-9_-]+|(docs|drive)\.google\.com\/forms\/[^\s]+)/i;
+
+export const isGoogleFormUrl = (url) => {
+  if (!url) return false;
+  return GOOGLE_FORM_REGEX.test(url.trim());
+};
+
+export const isEventConcluded = (ev) => {
+  if (!ev || !ev.event_date) return false;
+  try {
+    const datePart = ev.end_date || ev.event_date;
+    const timePart = ev.end_time || ev.event_time || "23:59:59";
+    const parsedTime = timePart.length === 5 ? `${timePart}:00` : timePart;
+    const eventEnd = new Date(`${datePart}T${parsedTime}`);
+    if (isNaN(eventEnd.getTime())) {
+      return new Date(datePart).setHours(23, 59, 59, 999) < Date.now();
+    }
+    return eventEnd.getTime() < Date.now();
+  } catch {
+    return false;
+  }
+};
 
 /**
  * GET /api/events
@@ -17,24 +39,10 @@ export const getPublicEvents = async (req, res) => {
   try {
     const { q, category, timing } = req.query;
 
-    const todayStr = new Date().toISOString().split("T")[0];
-
     let query = supabase
       .from("events")
       .select("*")
       .eq("status", "approved");
-
-    // Timing filter
-    if (timing === "past") {
-      query = query.lt("event_date", todayStr).order("event_date", { ascending: false });
-    } else if (timing === "today") {
-      query = query.eq("event_date", todayStr).order("event_time", { ascending: true });
-    } else if (timing === "all") {
-      query = query.order("event_date", { ascending: false });
-    } else {
-      // Default: 'upcoming' (today or future)
-      query = query.gte("event_date", todayStr).order("event_date", { ascending: true });
-    }
 
     // Category filter
     if (category && category !== "All" && category.trim()) {
@@ -47,7 +55,29 @@ export const getPublicEvents = async (req, res) => {
       return res.status(200).json({ events: [] });
     }
 
-    let results = data || [];
+    let results = (data || []).map((ev) => ({
+      ...ev,
+      is_concluded: isEventConcluded(ev),
+    }));
+
+    // Timing filter
+    if (timing === "past" || timing === "previous") {
+      results = results
+        .filter((ev) => ev.is_concluded)
+        .sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+    } else if (timing === "today") {
+      const todayStr = new Date().toISOString().split("T")[0];
+      results = results
+        .filter((ev) => (ev.end_date || ev.event_date) === todayStr && !ev.is_concluded)
+        .sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
+    } else if (timing === "all") {
+      results = results.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+    } else {
+      // Default: 'upcoming' (events whose end time has not yet passed)
+      results = results
+        .filter((ev) => !ev.is_concluded)
+        .sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+    }
 
     // Search query
     if (q && q.trim()) {
@@ -171,6 +201,15 @@ export const createEvent = async (req, res) => {
       return res.status(400).json({ message: "ZIP code cannot exceed 20 characters" });
     }
 
+    if (!registration_link || !registration_link.trim()) {
+      return res.status(400).json({ message: "A Google Form registration link is required for hosting an event." });
+    }
+    if (!isGoogleFormUrl(registration_link.trim())) {
+      return res.status(400).json({
+        message: "Registration link must be a valid Google Form link (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
+      });
+    }
+
     const userRole = (req.activeUser.role || "user").toLowerCase();
     const initialStatus = ["admin", "superadmin"].includes(userRole) ? "approved" : "pending";
 
@@ -205,7 +244,15 @@ export const createEvent = async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ message: error.message });
+    if (error) {
+      console.error("Event insertion error in eventController:", error);
+      return res.status(500).json({
+        message:
+          error.code === "42501"
+            ? "Database Permission Error: Supabase 'events' table blocked insertion due to Row Level Security (RLS). Please run the SQL policy in Supabase SQL Editor or update SUPABASE_SERVICE_ROLE_KEY in backend/.env."
+            : error.message,
+      });
+    }
 
     const message =
       initialStatus === "approved"
