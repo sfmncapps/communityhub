@@ -7,6 +7,11 @@ const supabase = createClient(
 
 const RESOURCES = {
   jobs: ["job_title", "job_description", "job_type", "location", "apply_link"],
+  vendor_listings: [
+    "shop_name", "owner_name", "category", "phone_number", "whatsapp_number",
+    "email", "street_address", "landmark", "city", "state", "postal_code",
+    "store_image_url", "description",
+  ],
   directory_listings: [
     "business_name", "category", "sub_category", "year_established",
     "business_type", "owner_name", "mobile", "email", "website",
@@ -28,7 +33,7 @@ const RESOURCES = {
   ],
 };
 
-const DEFAULT_STATUS = { jobs: "pending", directory_listings: "pending", classifieds: "pending", events: "pending" };
+const DEFAULT_STATUS = { jobs: "pending", vendor_listings: "pending", directory_listings: "pending", classifieds: "pending", events: "pending" };
 
 export const listMine = async (req, res) => {
   const { resource } = req.params;
@@ -55,13 +60,8 @@ export const createMine = async (req, res) => {
   const allowedFields = RESOURCES[resource];
   if (!allowedFields) return res.status(400).json({ message: "Unknown resource" });
 
-  if (resource === "jobs") {
-    if (!req.body.apply_link || !isGoogleFormUrl(req.body.apply_link)) {
-      return res.status(400).json({
-        message: "Job application link must be a valid Google Form URL (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
-      });
-    }
-  }
+  // Jobs now support internal application workflow; apply_link is optional
+
 
   if (resource === "events") {
     if (!req.body.registration_link || !isGoogleFormUrl(req.body.registration_link)) {

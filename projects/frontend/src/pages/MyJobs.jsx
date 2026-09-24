@@ -13,6 +13,14 @@ import {
   FaPlus,
   FaSearch,
   FaShieldAlt,
+  FaFilePdf,
+  FaUser,
+  FaEnvelope,
+  FaPhone,
+  FaStar,
+  FaEye,
+  FaTimes,
+  FaDownload,
 } from "react-icons/fa";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -48,6 +56,16 @@ export default function MyJobs() {
   // Jobs State
   const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
+
+  // Applicants Dashboard State
+  const [applicantCounts, setApplicantCounts] = useState({});
+  const [applicantsModalOpen, setApplicantsModalOpen] = useState(false);
+  const [activeJobForApplicants, setActiveJobForApplicants] = useState(null);
+  const [jobApplicants, setJobApplicants] = useState([]);
+  const [loadingApplicants, setLoadingApplicants] = useState(false);
+  const [applicantFilter, setApplicantFilter] = useState("all");
+  const [applicantSearch, setApplicantSearch] = useState("");
+  const [updatingAppStatus, setUpdatingAppStatus] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -177,11 +195,110 @@ export default function MyJobs() {
       }
 
       setJobs(fetched || []);
+      fetchApplicantCounts(fetched || []);
     } catch (e) {
       console.error("Fetch jobs error:", e);
       setJobs([]);
     } finally {
       setLoadingJobs(false);
+    }
+  };
+
+  const fetchApplicantCounts = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await fetch(`${API}/jobs/my/applications-counts`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setApplicantCounts(data.counts || {});
+          return;
+        }
+      }
+
+      // Supabase direct query fallback
+      const { data } = await supabase.from("job_applications").select("job_id");
+      if (data) {
+        const counts = {};
+        for (const row of data) {
+          counts[row.job_id] = (counts[row.job_id] || 0) + 1;
+        }
+        setApplicantCounts(counts);
+      }
+    } catch {
+      // Table may not yet be provisioned
+    }
+  };
+
+  const openApplicantsDashboard = async (job) => {
+    setActiveJobForApplicants(job);
+    setApplicantsModalOpen(true);
+    setLoadingApplicants(true);
+    setApplicantFilter("all");
+    setApplicantSearch("");
+
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await fetch(`${API}/jobs/${job.id}/applications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setJobApplicants(data.applicants || []);
+          setLoadingApplicants(false);
+          return;
+        }
+      }
+
+      const { data, error } = await supabase
+        .from("job_applications")
+        .select("*")
+        .eq("job_id", job.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setJobApplicants(data);
+      } else {
+        setJobApplicants([]);
+      }
+    } catch (err) {
+      console.error("Error loading applicants:", err);
+      setJobApplicants([]);
+    } finally {
+      setLoadingApplicants(false);
+    }
+  };
+
+  const handleUpdateApplicantStatus = async (appId, newStatus) => {
+    setUpdatingAppStatus(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        await fetch(`${API}/jobs/applications/${appId}/status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        });
+      } else {
+        await supabase
+          .from("job_applications")
+          .update({ status: newStatus })
+          .eq("id", appId);
+      }
+
+      setJobApplicants((prev) =>
+        prev.map((a) => (a.id === appId ? { ...a, status: newStatus } : a))
+      );
+    } catch (err) {
+      alert("Failed to update status: " + err.message);
+    } finally {
+      setUpdatingAppStatus(false);
     }
   };
 
@@ -312,11 +429,8 @@ export default function MyJobs() {
     if (!jobForm.company_name.trim()) return "Company / Organization Name is required.";
     if (!jobForm.location.trim()) return "Location is required.";
     if (!jobForm.job_description.trim()) return "Job Description is required.";
-    if (!jobForm.apply_link.trim()) {
-      return "Application Link is required. Please share a valid Google Form link.";
-    }
-    if (!GOOGLE_FORM_REGEX.test(jobForm.apply_link.trim())) {
-      return "Application Link must be a valid Google Form URL (e.g., https://forms.gle/... or https://docs.google.com/forms/...)";
+    if (jobForm.apply_link.trim() && !/^https?:\/\//i.test(jobForm.apply_link.trim())) {
+      return "External Application Link must start with http:// or https:// (or leave blank to use native internal resume applications).";
     }
     return null;
   };
@@ -661,16 +775,15 @@ export default function MyJobs() {
 
             <div className="form-field">
               <label>
-                Application Link (Google Form Required) <span className="req">*</span>
+                External Application URL (Optional)
               </label>
               <input
                 type="url"
-                placeholder="https://forms.gle/... or https://docs.google.com/forms/..."
+                placeholder="https://company.com/careers/apply (Optional)"
                 value={jobForm.apply_link}
                 onChange={(e) => setJobForm({ ...jobForm, apply_link: e.target.value })}
-                required
               />
-              <span className="field-hint">Candidates will apply directly through your Google Form link.</span>
+              <span className="field-hint">⚡ Native internal resume storage is active! Candidates upload their resume directly to your employer dashboard.</span>
             </div>
 
             <div className="form-field full-width">
@@ -784,11 +897,18 @@ export default function MyJobs() {
                       rel="noopener noreferrer"
                       className="link-google-form"
                     >
-                      Google Form Application ↗
+                      External Link ↗
                     </a>
                   )}
 
                   <div className="card-btn-group">
+                    <button
+                      type="button"
+                      className="btn-view-applicants"
+                      onClick={() => openApplicantsDashboard(job)}
+                    >
+                      👥 View Applicants ({applicantCounts[job.id] || 0})
+                    </button>
                     <button className="btn-delete" onClick={() => deleteJob(job)}>
                       Delete
                     </button>
@@ -878,8 +998,508 @@ export default function MyJobs() {
         </div>
       )}
 
+      {/* EMPLOYER APPLICANTS DASHBOARD MODAL */}
+      {applicantsModalOpen && activeJobForApplicants && (
+        <div className="modal-backdrop" onClick={() => setApplicantsModalOpen(false)}>
+          <div className="modal-card applicants-dashboard-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <span className="applicants-tag">Employer Recruitment Dashboard</span>
+                <h3 style={{ margin: "4px 0 2px" }}>
+                  Applicants for: {activeJobForApplicants.job_title}
+                </h3>
+                <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                  Review candidate contact details, experience, cover notes, and download submitted resumes.
+                </p>
+              </div>
+              <button className="close-btn" onClick={() => setApplicantsModalOpen(false)}>✕</button>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="applicants-controls-bar">
+              <div className="applicants-search-wrap">
+                <FaSearch className="app-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Filter by candidate name, email, or phone..."
+                  value={applicantSearch}
+                  onChange={(e) => setApplicantSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="applicants-filter-tabs">
+                {["all", "submitted", "reviewed", "shortlisted", "rejected"].map((st) => (
+                  <button
+                    key={st}
+                    className={`app-filter-pill ${applicantFilter === st ? "active" : ""}`}
+                    onClick={() => setApplicantFilter(st)}
+                  >
+                    {st.charAt(0).toUpperCase() + st.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="applicants-modal-body">
+              {loadingApplicants ? (
+                <div className="applicants-loading">
+                  <div className="spinner"></div>
+                  <p>Loading candidate applications...</p>
+                </div>
+              ) : (() => {
+                const filtered = jobApplicants.filter((app) => {
+                  if (applicantFilter !== "all" && (app.status || "submitted").toLowerCase() !== applicantFilter) {
+                    return false;
+                  }
+                  if (applicantSearch.trim()) {
+                    const term = applicantSearch.toLowerCase();
+                    const matchesName = (app.applicant_name || "").toLowerCase().includes(term);
+                    const matchesEmail = (app.applicant_email || "").toLowerCase().includes(term);
+                    const matchesPhone = (app.applicant_phone || "").toLowerCase().includes(term);
+                    if (!matchesName && !matchesEmail && !matchesPhone) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="applicants-empty-box">
+                      <FaBriefcase style={{ fontSize: "36px", color: "#cbd5e1", marginBottom: "8px" }} />
+                      <h4>No Candidates Found</h4>
+                      <p>
+                        {jobApplicants.length === 0
+                          ? "No candidates have applied to this position yet. Once candidates submit an application with their resume, they will appear here in real time."
+                          : "No applicants match your current search/filter."}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="applicants-list-grid">
+                    {filtered.map((candidate) => {
+                      const st = (candidate.status || "submitted").toLowerCase();
+                      return (
+                        <div key={candidate.id} className={`candidate-card ${st}`}>
+                          <div className="candidate-top">
+                            <div className="candidate-info-group">
+                              <div className="candidate-avatar">
+                                {(candidate.applicant_name || "A").charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <h4 className="candidate-name">{candidate.applicant_name}</h4>
+                                <div className="candidate-contacts">
+                                  <span><FaEnvelope /> {candidate.applicant_email}</span>
+                                  <span><FaPhone /> {candidate.applicant_phone}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <span className={`candidate-status-pill ${st}`}>
+                              {st === "shortlisted" && "⭐ Shortlisted"}
+                              {st === "reviewed" && "👁️ Reviewed"}
+                              {st === "rejected" && "✕ Rejected"}
+                              {st === "submitted" && "📥 New Application"}
+                            </span>
+                          </div>
+
+                          <div className="candidate-details-row">
+                            {candidate.current_experience && (
+                              <div className="cand-detail-chip">
+                                <strong>Experience:</strong> {candidate.current_experience}
+                              </div>
+                            )}
+                            {candidate.portfolio_url && (
+                              <a
+                                href={candidate.portfolio_url.startsWith("http") ? candidate.portfolio_url : `https://${candidate.portfolio_url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="cand-portfolio-link"
+                              >
+                                🔗 Portfolio / Profile <FaExternalLinkAlt style={{ fontSize: "10px" }} />
+                              </a>
+                            )}
+                            <div className="cand-date-chip">
+                              Applied: {new Date(candidate.created_at || Date.now()).toLocaleDateString()}
+                            </div>
+                          </div>
+
+                          {candidate.cover_note && (
+                            <div className="candidate-note-box">
+                              <strong>Candidate Note:</strong>
+                              <p>"{candidate.cover_note}"</p>
+                            </div>
+                          )}
+
+                          <div className="candidate-actions-footer">
+                            <a
+                              href={candidate.resume_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn-download-resume"
+                            >
+                              <FaFilePdf /> View / Download Resume
+                            </a>
+
+                            <div className="candidate-status-btns">
+                              <button
+                                className={`btn-status-act btn-shortlist ${st === "shortlisted" ? "selected" : ""}`}
+                                onClick={() => handleUpdateApplicantStatus(candidate.id, "shortlisted")}
+                                disabled={updatingAppStatus}
+                                title="Shortlist candidate"
+                              >
+                                <FaStar /> Shortlist
+                              </button>
+                              <button
+                                className={`btn-status-act btn-review ${st === "reviewed" ? "selected" : ""}`}
+                                onClick={() => handleUpdateApplicantStatus(candidate.id, "reviewed")}
+                                disabled={updatingAppStatus}
+                                title="Mark as reviewed"
+                              >
+                                <FaEye /> Reviewed
+                              </button>
+                              <button
+                                className={`btn-status-act btn-reject ${st === "rejected" ? "selected" : ""}`}
+                                onClick={() => handleUpdateApplicantStatus(candidate.id, "rejected")}
+                                disabled={updatingAppStatus}
+                                title="Reject candidate"
+                              >
+                                <FaTimes /> Reject
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="modal-footer" style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn-secondary" onClick={() => setApplicantsModalOpen(false)}>
+                Close Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* STYLES */}
       <style>{`
+        .btn-view-applicants {
+          background: #0f766e;
+          color: #ffffff;
+          border: none;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 8px 14px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: background 0.15s ease;
+        }
+        .btn-view-applicants:hover {
+          background: #0d9488;
+        }
+
+        .applicants-dashboard-card {
+          max-width: 820px !important;
+          width: 95% !important;
+          max-height: 88vh;
+          display: flex;
+          flex-direction: column;
+        }
+        .applicants-tag {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #0f766e;
+          background: #ccfbf1;
+          padding: 2px 8px;
+          border-radius: 999px;
+        }
+        .applicants-controls-bar {
+          padding: 16px 24px;
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        @media (min-width: 640px) {
+          .applicants-controls-bar {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+          }
+        }
+        .applicants-search-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 6px 12px;
+          flex: 1;
+          max-width: 380px;
+        }
+        .applicants-search-wrap input {
+          border: none;
+          outline: none;
+          width: 100%;
+          font-size: 13px;
+        }
+        .app-search-icon {
+          color: #94a3b8;
+          font-size: 13px;
+        }
+        .applicants-filter-tabs {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .app-filter-pill {
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          font-size: 12px;
+          font-weight: 600;
+          color: #475569;
+          padding: 5px 12px;
+          border-radius: 20px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .app-filter-pill.active {
+          background: #0f766e;
+          color: #ffffff;
+          border-color: #0f766e;
+        }
+
+        .applicants-modal-body {
+          padding: 20px 24px;
+          overflow-y: auto;
+          flex: 1;
+        }
+        .applicants-loading, .applicants-empty-box {
+          text-align: center;
+          padding: 40px 20px;
+        }
+        .applicants-empty-box h4 {
+          font-size: 17px;
+          margin: 0 0 6px;
+          color: #334155;
+        }
+        .applicants-empty-box p {
+          color: #64748b;
+          font-size: 13px;
+          max-width: 480px;
+          margin: 0 auto;
+          line-height: 1.5;
+        }
+
+        .applicants-list-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .candidate-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 18px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+          transition: border-color 0.15s ease;
+        }
+        .candidate-card.shortlisted {
+          border-left: 4px solid #f59e0b;
+          background: #fffbeb;
+        }
+        .candidate-card.reviewed {
+          border-left: 4px solid #0284c7;
+        }
+        .candidate-card.rejected {
+          border-left: 4px solid #ef4444;
+          opacity: 0.85;
+        }
+        .candidate-card.submitted {
+          border-left: 4px solid #10b981;
+        }
+
+        .candidate-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        .candidate-info-group {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        .candidate-avatar {
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #0f766e, #14b8a6);
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 17px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .candidate-name {
+          font-size: 16px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 3px;
+        }
+        .candidate-contacts {
+          display: flex;
+          gap: 14px;
+          font-size: 12px;
+          color: #64748b;
+          flex-wrap: wrap;
+        }
+        .candidate-contacts span {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .candidate-status-pill {
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 10px;
+          border-radius: 999px;
+        }
+        .candidate-status-pill.submitted {
+          background: #ecfdf5;
+          color: #065f46;
+        }
+        .candidate-status-pill.reviewed {
+          background: #e0f2fe;
+          color: #0369a1;
+        }
+        .candidate-status-pill.shortlisted {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .candidate-status-pill.rejected {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        .candidate-details-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-bottom: 12px;
+          font-size: 12px;
+        }
+        .cand-detail-chip {
+          background: #f1f5f9;
+          padding: 3px 8px;
+          border-radius: 6px;
+          color: #334155;
+        }
+        .cand-portfolio-link {
+          color: #0284c7;
+          font-weight: 600;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .cand-date-chip {
+          color: #94a3b8;
+          margin-left: auto;
+        }
+
+        .candidate-note-box {
+          background: #f8fafc;
+          border-left: 3px solid #cbd5e1;
+          padding: 8px 12px;
+          border-radius: 4px;
+          margin-bottom: 14px;
+        }
+        .candidate-note-box strong {
+          font-size: 11px;
+          color: #64748b;
+          text-transform: uppercase;
+        }
+        .candidate-note-box p {
+          margin: 4px 0 0;
+          font-size: 13px;
+          font-style: italic;
+          color: #334155;
+        }
+
+        .candidate-actions-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          border-top: 1px solid #f1f5f9;
+          padding-top: 12px;
+        }
+        .btn-download-resume {
+          background: #0284c7;
+          color: #ffffff;
+          border: none;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 7px 14px;
+          border-radius: 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          text-decoration: none;
+          transition: background 0.15s ease;
+        }
+        .btn-download-resume:hover {
+          background: #0369a1;
+        }
+        .candidate-status-btns {
+          display: flex;
+          gap: 6px;
+        }
+        .btn-status-act {
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 5px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: all 0.15s ease;
+        }
+        .btn-status-act.btn-shortlist:hover, .btn-status-act.btn-shortlist.selected {
+          background: #f59e0b;
+          color: #ffffff;
+          border-color: #f59e0b;
+        }
+        .btn-status-act.btn-review:hover, .btn-status-act.btn-review.selected {
+          background: #0284c7;
+          color: #ffffff;
+          border-color: #0284c7;
+        }
+        .btn-status-act.btn-reject:hover, .btn-status-act.btn-reject.selected {
+          background: #ef4444;
+          color: #ffffff;
+          border-color: #ef4444;
+        }
         .my-jobs-container {
           max-width: 1200px;
           margin: 0 auto;

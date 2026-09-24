@@ -58,3 +58,53 @@ export const requireUser = async (req, res, next) => {
     return res.status(500).json({ message: e.message });
   }
 };
+
+// Optional user middleware: populates req.activeUser if token is present, but never blocks requests
+export const optionalUser = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    if (!token) {
+      req.activeUser = null;
+      return next();
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const { data: user, error } = await supabase
+        .from("users_active")
+        .select("*")
+        .eq("id", decoded.userId)
+        .maybeSingle();
+
+      if (!error && user) {
+        req.activeUser = user;
+        return next();
+      }
+    } catch {
+      // Ignore
+    }
+
+    const { data: supaUser, error: supaErr } = await supabase.auth.getUser(token);
+    if (!supaErr && supaUser?.user) {
+      const { data: user } = await supabase
+        .from("users_active")
+        .select("*")
+        .eq("auth_id", supaUser.user.id)
+        .maybeSingle();
+
+      if (user) {
+        req.activeUser = user;
+        return next();
+      }
+    }
+
+    req.activeUser = null;
+    return next();
+  } catch {
+    req.activeUser = null;
+    return next();
+  }
+};
+

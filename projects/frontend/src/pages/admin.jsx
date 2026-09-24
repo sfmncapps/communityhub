@@ -30,7 +30,7 @@ const AdminPage = () => {
       case "theme":
         return <ManageThemeSettings />;
       default:
-        return <DashboardStats />;
+        return <DashboardStats setActivePage={setActivePage} />;
     }
   };
 

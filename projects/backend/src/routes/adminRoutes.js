@@ -11,6 +11,12 @@ import {
   getAdminJobs,
   updateJobStatus,
   deleteJob,
+  getAdminVendors,
+  updateVendorStatus,
+  deleteVendor,
+  getAdminClassifieds,
+  updateClassifiedStatus,
+  deleteClassified,
 } from "../controllers/adminController.js";
 import { requireUser } from "../middleware/requireUser.js";
 import { requireRole, requireExactRole } from "../middleware/requireRole.js";
@@ -35,6 +41,16 @@ router.delete("/events/:id", deleteEvent);
 router.get("/jobs", getAdminJobs);
 router.put("/jobs/:id/status", updateJobStatus);
 router.delete("/jobs/:id", deleteJob);
+
+// Local Vendor & Community Shop Moderation
+router.get("/vendors", getAdminVendors);
+router.put("/vendors/:id/status", updateVendorStatus);
+router.delete("/vendors/:id", deleteVendor);
+
+// Classifieds Moderation
+router.get("/classifieds", getAdminClassifieds);
+router.put("/classifieds/:id/status", updateClassifiedStatus);
+router.delete("/classifieds/:id", deleteClassified);
 
 // Only superadmin can promote/demote roles; admins get 403
 router.put("/users/:id/role", requireExactRole(["superadmin"]), updateUserRole);

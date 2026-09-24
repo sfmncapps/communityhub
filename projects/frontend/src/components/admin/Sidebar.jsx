@@ -1,16 +1,73 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import supabase from "../../config/supabaseClient";
+
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
   const navigate = useNavigate();
+  const [counts, setCounts] = useState({
+    events: 0,
+    jobs: 0,
+    directory: 0,
+    classifieds: 0,
+  });
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const localToken = localStorage.getItem("token");
+        const sessionToken = (await supabase.auth.getSession())?.data?.session?.access_token;
+        const token = localToken || sessionToken;
+
+        if (token) {
+          const res = await fetch(`${API}/admin/stats`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setCounts({
+              events: data.pending_events || 0,
+              jobs: data.pending_jobs || 0,
+              directory: data.pending_vendors || 0,
+              classifieds: data.pending_classifieds || 0,
+            });
+            return;
+          }
+        }
+
+        // Direct count fallback
+        const { count: pJobs } = await supabase.from("jobs").select("*", { count: "exact", head: true }).eq("status", "pending");
+        const { count: pEvents } = await supabase.from("events").select("*", { count: "exact", head: true }).eq("status", "pending");
+        const { count: pClassifieds } = await supabase.from("classifieds").select("*", { count: "exact", head: true }).eq("status", "pending");
+        let pVendors = 0;
+        try {
+          const { count: pv } = await supabase.from("vendor_listings").select("*", { count: "exact", head: true }).eq("status", "pending");
+          pVendors = pv || 0;
+        } catch {}
+
+        setCounts({
+          events: pEvents || 0,
+          jobs: pJobs || 0,
+          directory: pVendors,
+          classifieds: pClassifieds || 0,
+        });
+      } catch {}
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { id: "dashboard", label: "Dashboard Overview", icon: "📊" },
     { id: "verifications", label: "ID Verifications", icon: "🆔" },
     { id: "users", label: "Users & RBAC", icon: "👥" },
-    { id: "events", label: "Events Moderation", icon: "📅" },
-    { id: "jobs", label: "Jobs Moderation", icon: "💼" },
-    { id: "directory", label: "Directory Listings", icon: "🏢" },
-    { id: "classifieds", label: "Classifieds", icon: "🛒" },
+    { id: "events", label: "Events Moderation", icon: "📅", badge: counts.events },
+    { id: "jobs", label: "Jobs Moderation", icon: "💼", badge: counts.jobs },
+    { id: "directory", label: "Directory & Vendors", icon: "🏢", badge: counts.directory },
+    { id: "classifieds", label: "Classifieds", icon: "🛒", badge: counts.classifieds },
     { id: "theme", label: "Theme & Layout", icon: "🎨" },
   ];
 
@@ -43,7 +100,12 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
                 </div>
                 <span className="navLabel">{item.label}</span>
               </div>
-              <span className="arrow">{isActive ? "●" : "›"}</span>
+              <div className="navRight">
+                {item.badge > 0 && (
+                  <span className="navBadge">{item.badge}</span>
+                )}
+                <span className="arrow">{isActive ? "●" : "›"}</span>
+              </div>
             </div>
           );
         })}
@@ -167,6 +229,23 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
         .navItem.active .arrow {
           color: #16a34a;
           font-size: 10px;
+        }
+        .navRight {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .navBadge {
+          background: #f59e0b;
+          color: #ffffff;
+          font-size: 10.5px;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 999px;
+          min-width: 18px;
+          text-align: center;
+          line-height: 1.2;
+          box-shadow: 0 1px 3px rgba(245, 158, 11, 0.4);
         }
         .footerSection {
           padding: 16px 12px;

@@ -210,8 +210,8 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    const userRole = (req.activeUser.role || "user").toLowerCase();
-    const initialStatus = ["admin", "superadmin"].includes(userRole) ? "approved" : "pending";
+    // Every submitted event enters as status = 'pending' and requires Admin approval
+    const initialStatus = "pending";
 
     const payload = {
       user_id: req.activeUser.id,
@@ -254,10 +254,7 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    const message =
-      initialStatus === "approved"
-        ? "Event created and published successfully!"
-        : "Event submitted successfully. It is pending admin approval.";
+    const message = "Event submitted successfully. It is pending administrator approval before appearing publicly.";
 
     return res.status(201).json({ message, event: newEvent });
   } catch (e) {

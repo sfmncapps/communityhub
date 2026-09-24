@@ -18,6 +18,8 @@ import verificationRoutes from "./src/routes/verificationRoutes.js";
 import messageRoutes from "./src/routes/messageRoutes.js";
 import eventRoutes from "./src/routes/eventRoutes.js";
 import settingsRoutes from "./src/routes/settingsRoutes.js";
+import jobRoutes from "./src/routes/jobRoutes.js";
+import vendorRoutes from "./src/routes/vendorRoutes.js";
 import { authLimiter, apiLimiter } from "./src/middleware/rateLimiter.js";
 
 const app = express();
@@ -95,6 +97,10 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
+// Static Uploads Directory for Resumes & Vendor Media
+const uploadsDir = path.resolve(__dirname, "uploads");
+app.use("/uploads", express.static(uploadsDir));
+
 // Mounted Routes with Rate Limiting (RFP §8 Security)
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin", apiLimiter, adminRoutes);
@@ -104,6 +110,8 @@ app.use("/api/verification", apiLimiter, verificationRoutes);
 app.use("/api/messages", apiLimiter, messageRoutes);
 app.use("/api/events", apiLimiter, eventRoutes);
 app.use("/api/settings", apiLimiter, settingsRoutes);
+app.use("/api/jobs", apiLimiter, jobRoutes);
+app.use("/api/vendors", apiLimiter, vendorRoutes);
 
 const PORT = process.env.PORT || 5000;
 

@@ -18,6 +18,11 @@ const ManageDirectory = () => {
   const [activeTab, setActiveTab] = useState("pending"); // 'pending', 'approved'
   const [bizSearch, setBizSearch] = useState("");
 
+  // Local Vendors & Community Shops state
+  const [vendors, setVendors] = useState([]);
+  const [vendorTab, setVendorTab] = useState("pending"); // 'pending', 'approved', 'rejected', 'all'
+  const [vendorSearch, setVendorSearch] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ msg: "", type: "info" });
 
@@ -83,15 +88,53 @@ const ManageDirectory = () => {
     }
   };
 
+  // Fetch Local Vendors & Community Shops
+  const fetchVendors = async () => {
+    try {
+      const token = getToken();
+      if (token) {
+        const res = await fetch(`${API}/admin/vendors?status=${vendorTab}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setVendors(data.vendors || []);
+          return;
+        }
+      }
+
+      // Supabase direct fallback
+      let query = supabase
+        .from("vendor_listings")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (vendorTab !== "all") {
+        query = query.eq("status", vendorTab);
+      }
+
+      const { data, error } = await query;
+      if (!error && data) {
+        setVendors(data);
+      }
+    } catch (err) {
+      console.error("Fetch vendors error:", err);
+    }
+  };
+
   const reloadAll = async () => {
     setLoading(true);
-    await Promise.all([fetchCollectives(), fetchBusinesses()]);
+    await Promise.all([fetchCollectives(), fetchBusinesses(), fetchVendors()]);
     setLoading(false);
   };
 
   useEffect(() => {
     reloadAll();
   }, []);
+
+  useEffect(() => {
+    fetchVendors();
+  }, [vendorTab]);
 
   // --- COLLECTIVE ACTIONS ---
   const handleOpenVerifyModal = (col) => {
@@ -248,6 +291,78 @@ const ManageDirectory = () => {
     fetchBusinesses();
   };
 
+  // --- VENDOR & LOCAL SHOP ACTIONS ---
+  const updateVendorStatus = async (id, newStatus) => {
+    const ok = window.confirm(`Confirm to ${newStatus.toUpperCase()} this shop/vendor listing?`);
+    if (!ok) return;
+
+    let rejection_reason = null;
+    if (newStatus === "rejected") {
+      rejection_reason =
+        window.prompt(
+          "Optional rejection feedback for shop owner:",
+          "Listing requires additional verification or does not meet community guidelines."
+        ) || "Rejected by administrator";
+    }
+
+    try {
+      const token = getToken();
+      if (token) {
+        const res = await fetch(`${API}/admin/vendors/${id}/status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus, rejection_reason }),
+        });
+        if (res.ok) {
+          showToast(`Vendor listing marked as ${newStatus} ✅`, "success");
+          fetchVendors();
+          return;
+        }
+      }
+
+      // Supabase direct fallback
+      const { error } = await supabase
+        .from("vendor_listings")
+        .update({ status: newStatus, rejection_reason })
+        .eq("id", id);
+
+      if (error) throw error;
+      showToast(`Vendor listing marked as ${newStatus} ✅`, "success");
+      fetchVendors();
+    } catch (err) {
+      showToast(`Status update failed: ${err.message}`, "error");
+    }
+  };
+
+  const deleteVendor = async (id) => {
+    const ok = window.confirm("Are you sure you want to permanently delete this shop listing?");
+    if (!ok) return;
+
+    try {
+      const token = getToken();
+      if (token) {
+        const res = await fetch(`${API}/admin/vendors/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          showToast("Shop listing deleted", "success");
+          fetchVendors();
+          return;
+        }
+      }
+
+      await supabase.from("vendor_listings").delete().eq("id", id);
+      showToast("Shop listing deleted", "success");
+      fetchVendors();
+    } catch (err) {
+      showToast("Delete failed: " + err.message, "error");
+    }
+  };
+
   // Filtered lists
   const filteredCollectives = useMemo(() => {
     return collectives.filter((c) => {
@@ -275,6 +390,20 @@ const ManageDirectory = () => {
     });
   }, [businesses, activeTab, bizSearch]);
 
+  const filteredVendors = useMemo(() => {
+    return vendors.filter((v) => {
+      const q = vendorSearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        (v.shop_name || "").toLowerCase().includes(q) ||
+        (v.owner_name || "").toLowerCase().includes(q) ||
+        (v.category || "").toLowerCase().includes(q) ||
+        (v.city || "").toLowerCase().includes(q) ||
+        (v.phone_number || "").toLowerCase().includes(q);
+      return matchesSearch;
+    });
+  }, [vendors, vendorSearch]);
+
   // Counts
   const colCounts = useMemo(() => {
     const c = { pending: 0, approved: 0, verified: 0 };
@@ -296,13 +425,24 @@ const ManageDirectory = () => {
     return c;
   }, [businesses]);
 
+  const vendorCounts = useMemo(() => {
+    const c = { pending: 0, approved: 0, rejected: 0, all: vendors.length };
+    vendors.forEach((v) => {
+      const s = (v.status || "pending").toLowerCase();
+      if (s === "pending") c.pending += 1;
+      else if (s === "approved") c.approved += 1;
+      else if (s === "rejected") c.rejected += 1;
+    });
+    return c;
+  }, [vendors]);
+
   return (
     <div className="manage-dir-page">
       {/* TOP HEADER */}
       <div className="dir-header-row">
         <div>
           <h2>Directory & Collectives Moderation</h2>
-          <p>Verify organizations against official state records and moderate business directory listings</p>
+          <p>Verify organizations against official state records and moderate business directory & local shop listings</p>
         </div>
 
         <button className="btn-refresh" onClick={reloadAll}>
@@ -312,7 +452,7 @@ const ManageDirectory = () => {
 
       {toast.msg && <div className={`dir-toast ${toast.type}`}>{toast.msg}</div>}
 
-      {/* PRIMARY SECTION TOGGLE (Collectives vs Listings) */}
+      {/* PRIMARY SECTION TOGGLE (Collectives vs Local Vendors vs Listings) */}
       <div className="primary-section-toggle">
         <button
           className={`sec-toggle-btn ${section === "collectives" ? "active" : ""}`}
@@ -320,6 +460,18 @@ const ManageDirectory = () => {
         >
           🛡️ Collectives & Organizations (State Verification)
           <span className="pill-badge">{collectives.length}</span>
+        </button>
+
+        <button
+          className={`sec-toggle-btn ${section === "vendors" ? "active" : ""}`}
+          onClick={() => setSection("vendors")}
+        >
+          🏪 Local Shops & Vendors (Community Submissions)
+          {vendorCounts.pending > 0 ? (
+            <span className="pill-badge alert">{vendorCounts.pending} Pending</span>
+          ) : (
+            <span className="pill-badge">{vendors.length}</span>
+          )}
         </button>
 
         <button
@@ -613,6 +765,173 @@ const ManageDirectory = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 3: LOCAL SHOPS & VENDORS (COMMUNITY SUBMISSIONS WORKFLOW)        */}
+      {/* ========================================================================= */}
+      {section === "vendors" && (
+        <div className="section-content">
+          <div className="sub-control-bar">
+            <div className="tab-group">
+              <button
+                className={`tab-btn ${vendorTab === "pending" ? "active" : ""}`}
+                onClick={() => setVendorTab("pending")}
+              >
+                Pending Review <span className="tab-count">{vendorCounts.pending}</span>
+              </button>
+              <button
+                className={`tab-btn ${vendorTab === "approved" ? "active" : ""}`}
+                onClick={() => setVendorTab("approved")}
+              >
+                Approved <span className="tab-count">{vendorCounts.approved}</span>
+              </button>
+              <button
+                className={`tab-btn ${vendorTab === "rejected" ? "active" : ""}`}
+                onClick={() => setVendorTab("rejected")}
+              >
+                Rejected <span className="tab-count">{vendorCounts.rejected}</span>
+              </button>
+              <button
+                className={`tab-btn ${vendorTab === "all" ? "active" : ""}`}
+                onClick={() => setVendorTab("all")}
+              >
+                All Shops ({vendors.length})
+              </button>
+            </div>
+
+            <div className="search-wrap">
+              <input
+                type="text"
+                placeholder="Search shop name, owner, category, city, phone..."
+                value={vendorSearch}
+                onChange={(e) => setVendorSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="dir-loading">Loading vendor listings...</div>
+          ) : filteredVendors.length === 0 ? (
+            <div className="dir-empty">
+              <h3>No {vendorTab} vendor listings found</h3>
+              <p>There are currently no community vendor listings in this category or matching your search.</p>
+            </div>
+          ) : (
+            <div className="vendor-admin-grid">
+              {filteredVendors.map((v) => {
+                const s = (v.status || "pending").toLowerCase();
+                return (
+                  <div key={v.id} className="vendor-admin-card">
+                    <div className="vendor-card-media">
+                      {v.store_image_url ? (
+                        <img
+                          src={v.store_image_url}
+                          alt={v.shop_name}
+                          className="vendor-thumb-img"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            e.target.nextSibling.style.display = "flex";
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className="vendor-thumb-placeholder"
+                        style={{ display: v.store_image_url ? "none" : "flex" }}
+                      >
+                        <span style={{ fontSize: "2rem" }}>🏪</span>
+                        <small style={{ color: "#94a3b8", marginTop: 4 }}>No Storefront Photo</small>
+                      </div>
+                      <span className={`status-badge-floating ${s}`}>{s}</span>
+                    </div>
+
+                    <div className="vendor-card-body">
+                      <div className="vendor-title-row">
+                        <h3 className="vendor-shop-name">{v.shop_name}</h3>
+                        <span className="vendor-category-pill">{v.category}</span>
+                      </div>
+
+                      <div className="vendor-meta-list">
+                        <div className="vendor-meta-item">
+                          <strong>Owner:</strong> <span>{v.owner_name}</span>
+                        </div>
+                        <div className="vendor-meta-item">
+                          <strong>📍 Address:</strong>{" "}
+                          <span>
+                            {[v.street_address, v.landmark, v.city, v.state, v.postal_code]
+                              .filter(Boolean)
+                              .join(", ") || "Address not provided"}
+                          </span>
+                        </div>
+                        <div className="vendor-meta-item">
+                          <strong>📞 Phone:</strong>{" "}
+                          <a href={`tel:${v.phone_number}`} className="contact-link">
+                            {v.phone_number}
+                          </a>
+                          {v.whatsapp_number && (
+                            <a
+                              href={`https://wa.me/${v.whatsapp_number.replace(/[^0-9]/g, "")}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="wa-chip"
+                              title="Message via WhatsApp"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          )}
+                        </div>
+                        {v.email && (
+                          <div className="vendor-meta-item">
+                            <strong>✉️ Email:</strong>{" "}
+                            <a href={`mailto:${v.email}`} className="contact-link">
+                              {v.email}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {v.description && (
+                        <p className="vendor-description">"{v.description}"</p>
+                      )}
+
+                      {v.rejection_reason && (
+                        <div className="vendor-rejection-alert">
+                          <strong>Rejection Feedback:</strong> {v.rejection_reason}
+                        </div>
+                      )}
+
+                      <div className="vendor-actions-row">
+                        {s !== "approved" && (
+                          <button
+                            className="btn-vendor-approve"
+                            onClick={() => updateVendorStatus(v.id, "approved")}
+                          >
+                            ✓ Approve Shop
+                          </button>
+                        )}
+                        {s !== "rejected" && (
+                          <button
+                            className="btn-vendor-reject"
+                            onClick={() => updateVendorStatus(v.id, "rejected")}
+                          >
+                            ✕ Reject
+                          </button>
+                        )}
+                        <button
+                          className="btn-vendor-delete"
+                          onClick={() => deleteVendor(v.id)}
+                          title="Delete Listing"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1200,6 +1519,214 @@ const ManageDirectory = () => {
           border-radius: 10px;
           font-weight: 800;
           cursor: pointer;
+        }
+
+        /* VENDOR & COMMUNITY SHOP ADMIN CARDS */
+        .vendor-admin-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+          gap: 20px;
+        }
+        .vendor-admin-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+          display: flex;
+          flex-direction: column;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .vendor-admin-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+        }
+        .vendor-card-media {
+          height: 160px;
+          position: relative;
+          background: #f1f5f9;
+          overflow: hidden;
+        }
+        .vendor-thumb-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .vendor-thumb-placeholder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #f8fafc;
+        }
+        .status-badge-floating {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .status-badge-floating.pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .status-badge-floating.approved { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .status-badge-floating.rejected { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        .vendor-card-body {
+          padding: 18px;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .vendor-title-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 10px;
+        }
+        .vendor-shop-name {
+          font-size: 17px;
+          font-weight: 800;
+          color: #0f172a;
+          margin: 0;
+          line-height: 1.3;
+        }
+        .vendor-category-pill {
+          background: #f0fdf4;
+          color: #0f766e;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 10px;
+          border-radius: 999px;
+          white-space: nowrap;
+          border: 1px solid #bbf7d0;
+        }
+        .vendor-meta-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 13px;
+          color: #475569;
+        }
+        .vendor-meta-item {
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .vendor-meta-item strong {
+          color: #1e293b;
+        }
+        .contact-link {
+          color: #2563eb;
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .contact-link:hover {
+          text-decoration: underline;
+        }
+        .wa-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: #25d366;
+          color: white;
+          text-decoration: none;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 999px;
+          margin-left: 6px;
+        }
+        .wa-chip:hover {
+          background: #128c7e;
+        }
+        .vendor-description {
+          font-size: 13px;
+          color: #64748b;
+          font-style: italic;
+          margin: 0;
+          line-height: 1.4;
+          background: #f8fafc;
+          padding: 8px 12px;
+          border-radius: 8px;
+          border-left: 3px solid #cbd5e1;
+        }
+        .vendor-rejection-alert {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+          font-size: 12px;
+          padding: 8px 12px;
+          border-radius: 8px;
+        }
+        .vendor-actions-row {
+          margin-top: auto;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding-top: 10px;
+          border-top: 1px solid #f1f5f9;
+        }
+        .btn-vendor-approve {
+          flex: 1;
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: white;
+          border: none;
+          padding: 9px 14px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-vendor-approve:hover {
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+        }
+        .btn-vendor-reject {
+          flex: 1;
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #fca5a5;
+          padding: 9px 14px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-vendor-reject:hover {
+          background: #fecaca;
+        }
+        .btn-vendor-delete {
+          background: #f8fafc;
+          border: 1px solid #cbd5e1;
+          color: #64748b;
+          padding: 8px 12px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .btn-vendor-delete:hover {
+          background: #fee2e2;
+          border-color: #fca5a5;
+          color: #ef4444;
+        }
+        .pill-badge.alert {
+          background: #f59e0b;
+          color: #ffffff;
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0% { opacity: 1; }
+          50% { opacity: 0.75; }
+          100% { opacity: 1; }
         }
       `}</style>
     </div>

@@ -10,6 +10,7 @@ import {
   FaUserAlt,
   FaFilter,
 } from "react-icons/fa";
+import supabase from "../config/supabaseClient";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -27,8 +28,25 @@ const TIMING_OPTIONS = [
   { id: "today", label: "Today" },
   { id: "this_month", label: "All Upcoming" },
   { id: "all", label: "All Events" },
-  { id: "past", label: "Past Events" },
+  { id: "past", label: "Past / Completed Events" },
 ];
+
+// Helper to determine if an event has concluded based on event_date + end_time or end_date
+export const isEventConcluded = (ev) => {
+  if (!ev || !ev.event_date) return false;
+  try {
+    const datePart = ev.end_date || ev.event_date;
+    const timePart = ev.end_time || ev.event_time || "23:59:59";
+    const parsedTime = timePart.length === 5 ? `${timePart}:00` : timePart;
+    const eventEnd = new Date(`${datePart}T${parsedTime}`);
+    if (isNaN(eventEnd.getTime())) {
+      return new Date(datePart).setHours(23, 59, 59, 999) < Date.now();
+    }
+    return eventEnd.getTime() < Date.now();
+  } catch {
+    return false;
+  }
+};
 
 export default function Events() {
   const navigate = useNavigate();
@@ -41,18 +59,77 @@ export default function Events() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (search.trim()) params.append("q", search.trim());
-      if (selectedCategory && selectedCategory !== "All") params.append("category", selectedCategory);
-      if (timing) params.append("timing", timing);
+      let fetched = null;
 
-      const res = await fetch(`${API}/events?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(data.events || []);
-      } else {
-        setEvents([]);
+      // 1. Try Backend API
+      try {
+        const params = new URLSearchParams();
+        if (search.trim()) params.append("q", search.trim());
+        if (selectedCategory && selectedCategory !== "All") params.append("category", selectedCategory);
+        if (timing) params.append("timing", timing);
+
+        const res = await fetch(`${API}/events?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          fetched = data.events || [];
+        }
+      } catch (apiErr) {
+        console.warn("Backend events API notice:", apiErr.message);
       }
+
+      // 2. Fallback to Supabase direct query (strictly approved events)
+      if (!fetched) {
+        let query = supabase
+          .from("events")
+          .select("*")
+          .eq("status", "approved");
+
+        if (selectedCategory && selectedCategory !== "All") {
+          query = query.eq("category", selectedCategory);
+        }
+
+        const { data, error } = await query;
+        if (!error && data) {
+          let list = data.map((ev) => ({
+            ...ev,
+            is_concluded: isEventConcluded(ev),
+          }));
+
+          // Apply real-time automatic expiration filter
+          if (timing === "past" || timing === "previous") {
+            list = list
+              .filter((ev) => ev.is_concluded)
+              .sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+          } else if (timing === "today") {
+            const todayStr = new Date().toISOString().split("T")[0];
+            list = list
+              .filter((ev) => (ev.end_date || ev.event_date) === todayStr && !ev.is_concluded)
+              .sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
+          } else if (timing === "all") {
+            list = list.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+          } else {
+            // Default: 'upcoming' (events whose time has not passed)
+            list = list
+              .filter((ev) => !ev.is_concluded)
+              .sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+          }
+
+          if (search.trim()) {
+            const term = search.trim().toLowerCase();
+            list = list.filter(
+              (ev) =>
+                (ev.title || "").toLowerCase().includes(term) ||
+                (ev.venue_name || "").toLowerCase().includes(term) ||
+                (ev.city || "").toLowerCase().includes(term)
+            );
+          }
+          fetched = list;
+        } else {
+          fetched = [];
+        }
+      }
+
+      setEvents(fetched || []);
     } catch (err) {
       console.error("Failed to load events:", err);
       setEvents([]);
