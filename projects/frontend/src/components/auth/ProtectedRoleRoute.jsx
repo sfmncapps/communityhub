@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import supabase from "../../config/supabaseClient";
+import { setAuthSession, clearAuthSession } from "../../services/authService";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -26,7 +27,41 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
     let mounted = true;
 
     const checkRoleAccess = async () => {
-      // 1. Check cached user in localStorage for fast initial check
+      // 1. Mandatory token check - NEVER authorize on cached user string alone
+      const token = await getAuthToken();
+      if (!token) {
+        clearAuthSession();
+        if (mounted) {
+          setAuthorized(false);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // 2. Validate token and fetch up-to-date role from backend
+      try {
+        const res = await fetch(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            setAuthSession(token, data.user);
+            const role = (data.user.role || "user").toLowerCase();
+            const allowed = isRoleAllowed(role, allowedRoles, strict);
+            if (mounted) {
+              setAuthorized(allowed);
+              setLoading(false);
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Role check API error:", err);
+      }
+
+      // 3. Fallback check from verified session cache if offline/error
       const storedUserStr = localStorage.getItem("user");
       if (storedUserStr) {
         try {
@@ -39,42 +74,10 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
             }
             return;
           }
-        } catch {
-          // ignore JSON parse error
-        }
+        } catch {}
       }
 
-      // 2. Fetch token and verify against backend /auth/me API
-      const token = await getAuthToken();
-      if (!token) {
-        if (mounted) {
-          setAuthorized(false);
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.user) {
-            localStorage.setItem("user", JSON.stringify(data.user));
-            const role = (data.user.role || "user").toLowerCase();
-            if (mounted) {
-              setAuthorized(isRoleAllowed(role, allowedRoles, strict));
-              setLoading(false);
-            }
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Role check API error:", err);
-      }
-
+      clearAuthSession();
       if (mounted) {
         setAuthorized(false);
         setLoading(false);

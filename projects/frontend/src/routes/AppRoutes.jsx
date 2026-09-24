@@ -25,6 +25,10 @@ import ProtectedRoleRoute from "../components/auth/ProtectedRoleRoute";
 import ProtectedUserRoute from "../components/auth/ProtectedUserRoute";
 import AdminLogin from "../pages/AdminLogin";
 import Dashboard from "../pages/Dashboard";
+import MyClassifieds from "../pages/MyClassifieds";
+import MyDirectory from "../pages/MyDirectory";
+import MyEvents from "../pages/MyEvents";
+import MyJobs from "../pages/MyJobs";
 import { ThemeProvider } from "../context/ThemeContext";
 
 const AppRoutes = () => {
@@ -63,9 +67,13 @@ const AppRoutes = () => {
           <Route path="/manager" element={<ManagerPortal />} />
         </Route>
 
-        {/* User Dashboard & Messaging (Protected) */}
+        {/* User Dashboard & Management Pages (Protected) */}
         <Route element={<ProtectedUserRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/my-classifieds" element={<MyClassifieds />} />
+          <Route path="/my-directory" element={<MyDirectory />} />
+          <Route path="/my-events" element={<MyEvents />} />
+          <Route path="/my-jobs" element={<MyJobs />} />
           <Route path="/messages" element={<MessagingCenter />} />
         </Route>
 

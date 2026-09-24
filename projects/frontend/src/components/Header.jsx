@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { FaBars, FaTimes, FaEnvelope, FaShieldAlt, FaUsersCog } from "react-icons/fa";
+import { FaBars, FaTimes, FaShieldAlt, FaUsersCog } from "react-icons/fa";
 import supabase from "../config/supabaseClient";
 import { useTheme } from "../context/ThemeContext";
+import { clearAuthSession, setAuthSession } from "../services/authService";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -23,26 +24,26 @@ const Header = () => {
   const visibleLinks = (headerMenu || []).filter((item) => item.is_visible);
 
   const loadProfile = async () => {
+    const token = await getAuthToken();
+    if (!token) {
+      setProfile(null);
+      clearAuthSession();
+      setChecking(false);
+      return;
+    }
+
     // 1. Instant check from localStorage
     const cachedUserStr = localStorage.getItem("user");
     if (cachedUserStr) {
       try {
         const parsed = JSON.parse(cachedUserStr);
-        if (parsed && (parsed.email || parsed.name)) {
+        if (parsed && (parsed.email || parsed.name || parsed.username)) {
           setProfile(parsed);
           setChecking(false);
         }
       } catch {
         // ignore parse error
       }
-    }
-
-    const token = await getAuthToken();
-    if (!token) {
-      setProfile(null);
-      localStorage.removeItem("user");
-      setChecking(false);
-      return;
     }
 
     try {
@@ -52,8 +53,9 @@ const Header = () => {
       const data = await res.json();
       if (res.ok && data.user) {
         setProfile(data.user);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        setAuthSession(token, data.user);
       } else {
+        clearAuthSession();
         setProfile(null);
       }
     } catch {
@@ -70,8 +72,8 @@ const Header = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
+        clearAuthSession();
         setProfile(null);
-        localStorage.removeItem("user");
         setChecking(false);
       } else {
         loadProfile();
@@ -79,10 +81,12 @@ const Header = () => {
     });
 
     window.addEventListener("profile-updated", loadProfile);
+    window.addEventListener("auth-changed", loadProfile);
 
     return () => {
       subscription.unsubscribe();
       window.removeEventListener("profile-updated", loadProfile);
+      window.removeEventListener("auth-changed", loadProfile);
     };
   }, []);
 
@@ -121,17 +125,6 @@ const Header = () => {
               <span>Manage Collective</span>
             </Link>
           )}
-
-          <Link
-            to="/messages"
-            className={`msgNavBtn ${mobile ? "mobileBtn" : ""}`}
-            onClick={() => setMenuOpen(false)}
-            title="In-App Messaging Center"
-            style={{ textDecoration: "none" }}
-          >
-            <FaEnvelope />
-            <span>Messages</span>
-          </Link>
 
           <Link
             to="/dashboard"

@@ -14,12 +14,11 @@ const DEFAULT_SETTINGS = {
   theme: "yellow_pages",
   header_menu: [
     { id: "home", label: "Home", path: "/", is_visible: true, sort_order: 1 },
-    { id: "welcome", label: "Welcome", path: "/welcome", is_visible: true, sort_order: 2 },
-    { id: "events", label: "Events", path: "/events", is_visible: true, sort_order: 3 },
-    { id: "directory", label: "Directory", path: "/directory", is_visible: true, sort_order: 4 },
-    { id: "community", label: "Community", path: "/community", is_visible: true, sort_order: 5 },
-    { id: "jobs", label: "Jobs", path: "/jobs", is_visible: true, sort_order: 6 },
-    { id: "classifieds", label: "Classifieds", path: "/classifieds", is_visible: true, sort_order: 7 },
+    { id: "events", label: "Events", path: "/events", is_visible: true, sort_order: 2 },
+    { id: "directory", label: "Directory", path: "/directory", is_visible: true, sort_order: 3 },
+    { id: "community", label: "Community", path: "/community", is_visible: true, sort_order: 4 },
+    { id: "jobs", label: "Jobs", path: "/jobs", is_visible: true, sort_order: 5 },
+    { id: "classifieds", label: "Classifieds", path: "/classifieds", is_visible: true, sort_order: 6 },
   ],
   homepage_widgets: [
     { key: "hero", title: "Hero Welcome Banner", is_enabled: true, sort_order: 1 },

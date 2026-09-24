@@ -53,10 +53,6 @@ const Footer = () => {
               <span style={s.linkIcon}><ArrowIcon /></span>
               <span>Home</span>
             </Link>
-            <Link to="/welcome" style={s.linkRow}>
-              <span style={s.linkIcon}><ArrowIcon /></span>
-              <span>Welcome</span>
-            </Link>
             <Link to="/community" style={s.linkRow}>
               <span style={s.linkIcon}><ArrowIcon /></span>
               <span>Community</span>

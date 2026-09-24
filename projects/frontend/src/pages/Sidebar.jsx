@@ -1,5 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaIdCard, FaEnvelope, FaBriefcase, FaSignOutAlt, FaShieldAlt, FaUsersCog, FaCalendarAlt } from "react-icons/fa";
+import {
+  FaUser,
+  FaBuilding,
+  FaBriefcase,
+  FaSignOutAlt,
+  FaShieldAlt,
+  FaUsersCog,
+  FaCalendarAlt,
+  FaTags,
+  FaStore,
+} from "react-icons/fa";
 
 const Sidebar = ({ activePage, setActivePage, onLogout }) => {
   const navigate = useNavigate();
@@ -32,7 +42,7 @@ const Sidebar = ({ activePage, setActivePage, onLogout }) => {
           className={activePage === "verification" ? "active" : ""}
           onClick={() => setActivePage("verification")}
         >
-          <FaIdCard /> ID Verification
+          <FaBuilding /> Organization Verification
         </li>
 
         <li
@@ -50,10 +60,17 @@ const Sidebar = ({ activePage, setActivePage, onLogout }) => {
         </li>
 
         <li
-          className={activePage === "messages" ? "active" : ""}
-          onClick={() => setActivePage("messages")}
+          className={activePage === "my-classifieds" ? "active" : ""}
+          onClick={() => setActivePage("my-classifieds")}
         >
-          <FaEnvelope /> Messages
+          <FaTags /> My Classifieds
+        </li>
+
+        <li
+          className={activePage === "my-directory" ? "active" : ""}
+          onClick={() => setActivePage("my-directory")}
+        >
+          <FaStore /> My Directory
         </li>
 
         {/* ADMIN PORTAL LINK FOR ADMINS & SUPERADMINS */}

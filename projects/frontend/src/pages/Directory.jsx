@@ -32,94 +32,6 @@ const VENDOR_CATEGORIES = [
   "Home & Garden",
 ];
 
-const SAMPLE_APPROVED_VENDORS = [
-  {
-    id: "sample-vendor-1",
-    shop_name: "Green Valley Organic Grocers",
-    owner_name: "Ramesh Patel",
-    category: "Groceries",
-    phone_number: "+1 (512) 555-0143",
-    whatsapp_number: "+15125550143",
-    email: "contact@greenvalleygrocers.com",
-    street_address: "1420 Community Square, Suite 101",
-    landmark: "Near Central Park Gate 2",
-    city: "Austin",
-    state: "Texas",
-    postal_code: "78701",
-    store_image_url: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80",
-    description: "Farm-fresh organic fruits, vegetables, heritage grains, dairy, and cold-pressed cooking oils sourced directly from local regional farmers.",
-    status: "approved",
-  },
-  {
-    id: "sample-vendor-2",
-    shop_name: "Spice Route Sweets & Chaat",
-    owner_name: "Anita & Vikram Sharma",
-    category: "Food & Snacks",
-    phone_number: "+1 (713) 555-0198",
-    whatsapp_number: "+17135550198",
-    email: "spiceroute@chaatclub.org",
-    street_address: "880 Hillcroft St, Block B",
-    landmark: "Opposite Mahatma Gandhi District Plaza",
-    city: "Houston",
-    state: "Texas",
-    postal_code: "77036",
-    store_image_url: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
-    description: "Authentic homemade savoury snacks, samosas, pani puri kits, traditional festive sweets, and fresh filter coffee served daily.",
-    status: "approved",
-  },
-  {
-    id: "sample-vendor-3",
-    shop_name: "QuickFix Mobile & Laptop Repair",
-    owner_name: "Mohammad Farooq",
-    category: "Electronics & Repair",
-    phone_number: "+1 (214) 555-0122",
-    whatsapp_number: "+12145550122",
-    email: "support@quickfixdevices.com",
-    street_address: "310 MacArthur Blvd",
-    landmark: "Behind Metro Station Exit A",
-    city: "Dallas",
-    state: "Texas",
-    postal_code: "75038",
-    store_image_url: "https://images.unsplash.com/photo-1597733336794-12d05021d510?auto=format&fit=crop&w=800&q=80",
-    description: "Express same-day smartphone screen replacements, laptop hardware diagnostics, battery upgrades, and software virus removal.",
-    status: "approved",
-  },
-  {
-    id: "sample-vendor-4",
-    shop_name: "Heritage Silks & Traditional Wear",
-    owner_name: "Meera Krishnan",
-    category: "Retail",
-    phone_number: "+1 (210) 555-0189",
-    whatsapp_number: "+12105550189",
-    email: "sales@heritagesilks.com",
-    street_address: "504 West Loop Marketplace",
-    landmark: "Next to Indian Cultural Center",
-    city: "San Antonio",
-    state: "Texas",
-    postal_code: "78201",
-    store_image_url: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=800&q=80",
-    description: "Handloom sarees, festive kurta sets, bespoke tailoring, and traditional community festival accessories for the whole family.",
-    status: "approved",
-  },
-  {
-    id: "sample-vendor-5",
-    shop_name: "Neighborhood Handy & Plumbing Services",
-    owner_name: "Carlos Gomez",
-    category: "Services",
-    phone_number: "+1 (512) 555-0165",
-    whatsapp_number: "+15125550165",
-    email: "carlos@austinhandy.com",
-    street_address: "712 South Congress Ave",
-    landmark: "South District Hub",
-    city: "Austin",
-    state: "Texas",
-    postal_code: "78704",
-    store_image_url: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80",
-    description: "Licensed residential plumbing repairs, fixture installations, electrical trouble-shooting, and home maintenance with guaranteed quotes.",
-    status: "approved",
-  },
-];
-
 const Directory = () => {
   const [searchParams] = useSearchParams();
   const initialLetter = searchParams.get("letter") || "All";
@@ -179,7 +91,7 @@ const Directory = () => {
         const res = await fetch(`${API}/vendors`);
         if (res.ok) {
           const data = await res.json();
-          setVendors(data.vendors && data.vendors.length > 0 ? data.vendors : SAMPLE_APPROVED_VENDORS);
+          setVendors(data.vendors || []);
         } else {
           // Direct Supabase fallback
           const { data: vData } = await supabase
@@ -188,10 +100,15 @@ const Directory = () => {
             .eq("status", "approved")
             .order("created_at", { ascending: false });
 
-          setVendors(vData && vData.length > 0 ? vData : SAMPLE_APPROVED_VENDORS);
+          setVendors(vData || []);
         }
       } catch {
-        setVendors(SAMPLE_APPROVED_VENDORS);
+        const { data: vData } = await supabase
+          .from("vendor_listings")
+          .select("*")
+          .eq("status", "approved")
+          .order("created_at", { ascending: false });
+        setVendors(vData || []);
       }
 
       // 2. Fetch Collectives
@@ -325,9 +242,13 @@ const Directory = () => {
         }
       }
 
+      const { data: sess } = await supabase.auth.getSession();
+      const userId = sess?.session?.user?.id;
+
       // If storage did not produce URL and preview exists, send preview to backend upload
       const payload = {
         ...shopForm,
+        user_id: userId || null,
         store_image_url: finalImageUrl || shopImagePreview || null,
         status: "pending", // Mandated: requires Admin approval before public visibility
       };

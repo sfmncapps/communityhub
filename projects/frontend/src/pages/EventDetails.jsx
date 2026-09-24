@@ -12,7 +12,10 @@ import {
   FaArrowLeft,
   FaShareAlt,
   FaCheckCircle,
+  FaTimes,
+  FaUsers,
 } from "react-icons/fa";
+import supabase from "../config/supabaseClient";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -23,6 +26,34 @@ export default function EventDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  // Native RSVP State
+  const [showRsvpModal, setShowRsvpModal] = useState(false);
+  const [rsvpSuccess, setRsvpSuccess] = useState(false);
+  const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
+  const [rsvpError, setRsvpError] = useState("");
+  const [rsvpForm, setRsvpForm] = useState({
+    attendee_name: "",
+    attendee_email: "",
+    attendee_phone: "",
+    number_of_guests: 1,
+    notes: "",
+  });
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        setRsvpForm((prev) => ({
+          ...prev,
+          attendee_name: u.name || u.username || prev.attendee_name,
+          attendee_email: u.email || prev.attendee_email,
+          attendee_phone: u.phone || prev.attendee_phone,
+        }));
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     fetchEventDetails();
@@ -117,6 +148,48 @@ export default function EventDetails() {
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     `${event.venue_name}, ${event.address || ""}, ${event.city}, ${event.state}`
   )}`;
+
+  const handleRsvpSubmit = async (e) => {
+    e.preventDefault();
+    setRsvpError("");
+    setRsvpSubmitting(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      const headers = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const res = await fetch(`${API}/events/${id}/register`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(rsvpForm),
+      });
+
+      if (!res.ok) {
+        // Fallback directly to Supabase client
+        const { error: supaErr } = await supabase.from("event_registrations").insert([
+          {
+            event_id: id,
+            attendee_name: rsvpForm.attendee_name,
+            attendee_email: rsvpForm.attendee_email,
+            attendee_phone: rsvpForm.attendee_phone,
+            number_of_guests: Number(rsvpForm.number_of_guests) || 1,
+            notes: rsvpForm.notes || null,
+          },
+        ]);
+        if (supaErr) throw new Error(supaErr.message || "Registration failed");
+      }
+
+      setRsvpSuccess(true);
+      setShowRsvpModal(false);
+    } catch (err) {
+      setRsvpError(err.message || "Failed to submit registration");
+    } finally {
+      setRsvpSubmitting(false);
+    }
+  };
 
   return (
     <div className="ev-detail-page">
@@ -291,25 +364,32 @@ export default function EventDetails() {
               >
                 Event Concluded (Closed)
               </button>
-            ) : event.registration_link ? (
-              <a
-                href={
-                  event.registration_link.startsWith("http")
-                    ? event.registration_link
-                    : `https://${event.registration_link}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="btn-rsvp-primary"
+            ) : rsvpSuccess ? (
+              <div
+                style={{
+                  background: "#dcfce7",
+                  color: "#166534",
+                  padding: "14px",
+                  borderRadius: "12px",
+                  fontWeight: "700",
+                  textAlign: "center",
+                  fontSize: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  border: "1px solid #bbf7d0",
+                }}
               >
-                Register on Google Form 📋 <FaExternalLinkAlt />
-              </a>
+                <FaCheckCircle style={{ color: "#16a34a", fontSize: "18px" }} />
+                <span>You're Registered for this Event!</span>
+              </div>
             ) : (
               <button
                 className="btn-rsvp-primary"
-                onClick={() => alert("Free open entry event! Simply arrive at the scheduled time.")}
+                onClick={() => setShowRsvpModal(true)}
               >
-                <FaCheckCircle /> Free Admission (Walk-in Welcome)
+                <FaTicketAlt /> Register for Event / RSVP
               </button>
             )}
 
@@ -318,11 +398,110 @@ export default function EventDetails() {
             </button>
 
             <div className="sidebar-subtext">
-              Organized for CommunityHub verified members and local collectives.
+              100% native platform registration. Confirmation stored in Supabase.
             </div>
           </div>
         </div>
       </div>
+
+      {/* NATIVE EVENT REGISTRATION / RSVP MODAL */}
+      {showRsvpModal && (
+        <div className="rsvp-modal-overlay" onClick={() => setShowRsvpModal(false)}>
+          <div className="rsvp-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="rsvp-modal-header">
+              <div>
+                <h3>RSVP / Event Registration</h3>
+                <p>{event.title}</p>
+              </div>
+              <button className="rsvp-close-btn" onClick={() => setShowRsvpModal(false)}>
+                <FaTimes />
+              </button>
+            </div>
+
+            {rsvpError && (
+              <div className="rsvp-error-banner">
+                {rsvpError}
+              </div>
+            )}
+
+            <form onSubmit={handleRsvpSubmit} className="rsvp-form">
+              <div className="rsvp-field">
+                <label>Attendee Full Name <span style={{ color: "#ef4444" }}>*</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. John Doe"
+                  value={rsvpForm.attendee_name}
+                  onChange={(e) => setRsvpForm({ ...rsvpForm, attendee_name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="rsvp-field">
+                <label>Email Address <span style={{ color: "#ef4444" }}>*</span></label>
+                <input
+                  type="email"
+                  placeholder="john@example.com"
+                  value={rsvpForm.attendee_email}
+                  onChange={(e) => setRsvpForm({ ...rsvpForm, attendee_email: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="rsvp-field">
+                <label>Phone / WhatsApp Number <span style={{ color: "#ef4444" }}>*</span></label>
+                <input
+                  type="tel"
+                  placeholder="+1 (555) 000-0000"
+                  value={rsvpForm.attendee_phone}
+                  onChange={(e) => setRsvpForm({ ...rsvpForm, attendee_phone: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="rsvp-field">
+                <label>Number of Guests (including you):</label>
+                <select
+                  value={rsvpForm.number_of_guests}
+                  onChange={(e) => setRsvpForm({ ...rsvpForm, number_of_guests: e.target.value })}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n} {n === 1 ? "Person" : "People"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rsvp-field">
+                <label>Special Requests / Notes (Optional):</label>
+                <textarea
+                  rows="3"
+                  placeholder="Any accessibility requirements or questions for the organizer..."
+                  value={rsvpForm.notes}
+                  onChange={(e) => setRsvpForm({ ...rsvpForm, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="rsvp-actions">
+                <button
+                  type="button"
+                  className="btn-cancel"
+                  onClick={() => setShowRsvpModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-confirm-rsvp"
+                  disabled={rsvpSubmitting}
+                >
+                  {rsvpSubmitting ? "Confirming Registration..." : "Confirm RSVP & Attend"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .ev-detail-page {
@@ -706,6 +885,129 @@ export default function EventDetails() {
           .ev-detail-container { grid-template-columns: 1fr; }
           .ev-banner-wrap { height: 260px; }
           .ev-header-block h1 { font-size: 22px; }
+        }
+
+        /* RSVP Modal Styles */
+        .rsvp-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+        }
+        .rsvp-modal-content {
+          background: #ffffff;
+          border-radius: 16px;
+          max-width: 480px;
+          width: 100%;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+          overflow: hidden;
+          animation: modalPop 0.2s ease-out;
+        }
+        @keyframes modalPop {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .rsvp-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .rsvp-modal-header h3 {
+          margin: 0;
+          font-size: 18px;
+          color: #0f172a;
+          font-weight: 700;
+        }
+        .rsvp-modal-header p {
+          margin: 4px 0 0;
+          font-size: 13px;
+          color: #64748b;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 380px;
+        }
+        .rsvp-close-btn {
+          background: none;
+          border: none;
+          color: #94a3b8;
+          font-size: 16px;
+          cursor: pointer;
+          padding: 4px;
+        }
+        .rsvp-close-btn:hover { color: #0f172a; }
+        .rsvp-form {
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .rsvp-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .rsvp-field label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #334155;
+        }
+        .rsvp-field input, .rsvp-field select, .rsvp-field textarea {
+          padding: 10px 14px;
+          border-radius: 8px;
+          border: 1px solid #cbd5e1;
+          font-size: 14px;
+          outline: none;
+          font-family: inherit;
+        }
+        .rsvp-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .btn-cancel {
+          background: #f1f5f9;
+          border: 1px solid #e2e8f0;
+          color: #475569;
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+        }
+        .btn-confirm-rsvp {
+          background: #0f766e;
+          border: none;
+          color: #ffffff;
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-weight: 700;
+          font-size: 14px;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
+        }
+        .btn-confirm-rsvp:hover { background: #0d9488; }
+        .btn-confirm-rsvp:disabled { opacity: 0.7; cursor: not-allowed; }
+        .rsvp-error-banner {
+          background: #fef2f2;
+          border-left: 4px solid #ef4444;
+          color: #b91c1c;
+          padding: 10px 16px;
+          font-size: 13px;
+          margin: 16px 24px 0;
         }
       `}</style>
     </div>

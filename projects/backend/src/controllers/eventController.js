@@ -201,15 +201,6 @@ export const createEvent = async (req, res) => {
       return res.status(400).json({ message: "ZIP code cannot exceed 20 characters" });
     }
 
-    if (!registration_link || !registration_link.trim()) {
-      return res.status(400).json({ message: "A Google Form registration link is required for hosting an event." });
-    }
-    if (!isGoogleFormUrl(registration_link.trim())) {
-      return res.status(400).json({
-        message: "Registration link must be a valid Google Form link (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
-      });
-    }
-
     // Every submitted event enters as status = 'pending' and requires Admin approval
     const initialStatus = "pending";
 
@@ -257,6 +248,115 @@ export const createEvent = async (req, res) => {
     const message = "Event submitted successfully. It is pending administrator approval before appearing publicly.";
 
     return res.status(201).json({ message, event: newEvent });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+/**
+ * POST /api/events/:id/register
+ * Native attendee registration / RSVP for an event
+ */
+export const registerForEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { attendee_name, attendee_email, attendee_phone, number_of_guests = 1, notes } = req.body;
+
+    if (!attendee_name || !attendee_name.trim()) {
+      return res.status(400).json({ message: "Attendee name is required" });
+    }
+    if (!attendee_email || !attendee_email.trim()) {
+      return res.status(400).json({ message: "Attendee email is required" });
+    }
+    if (!attendee_phone || !attendee_phone.trim()) {
+      return res.status(400).json({ message: "Attendee phone number is required" });
+    }
+
+    // Verify event exists
+    const { data: event, error: evErr } = await supabase
+      .from("events")
+      .select("id, title, status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (evErr) return res.status(500).json({ message: evErr.message });
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    const payload = {
+      event_id: id,
+      user_id: req.activeUser?.id || null,
+      attendee_name: attendee_name.trim(),
+      attendee_email: attendee_email.trim(),
+      attendee_phone: attendee_phone.trim(),
+      number_of_guests: parseInt(number_of_guests, 10) || 1,
+      notes: notes ? notes.trim() : null,
+    };
+
+    const { data: registration, error: regErr } = await supabase
+      .from("event_registrations")
+      .insert([payload])
+      .select()
+      .single();
+
+    if (regErr) {
+      console.error("Event registration insertion error:", regErr);
+      return res.status(500).json({ message: regErr.message });
+    }
+
+    return res.status(201).json({
+      message: "Successfully registered for the event! 🎉",
+      registration,
+    });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+/**
+ * GET /api/events/:id/registrations
+ * Organizer & Admin view attendee registrations
+ */
+export const getEventRegistrations = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: event, error: evErr } = await supabase
+      .from("events")
+      .select("id, user_id, title")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (evErr) return res.status(500).json({ message: evErr.message });
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    const activeUser = req.activeUser;
+    const isAdmin = activeUser && ["admin", "superadmin"].includes((activeUser.role || "").toLowerCase());
+    const isOwner = activeUser && activeUser.id === event.user_id;
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ message: "Not authorized to view attendee registrations" });
+    }
+
+    const { data: registrations, error } = await supabase
+      .from("event_registrations")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ message: error.message });
+
+    const totalGuests = (registrations || []).reduce(
+      (sum, r) => sum + (parseInt(r.number_of_guests, 10) || 1),
+      0
+    );
+
+    return res.json({
+      event_id: id,
+      event_title: event.title,
+      count: (registrations || []).length,
+      total_guests: totalGuests,
+      registrations: registrations || [],
+    });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }

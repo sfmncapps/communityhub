@@ -20,10 +20,11 @@ const RESOURCES = {
     "facebook", "instagram", "linkedin", "experience", "business_image_url",
   ],
   classifieds: [
-    "category", "sub_category", "title", "description", "price", "city",
-    "zip_code", "region", "state", "contact_name", "contact_phone",
-    "contact_email", "contact_whatsapp", "media_type", "youtube_url",
-    "image_name", "media_url", "media_path",
+    "category", "sub_category", "title", "description", "price", "is_free",
+    "condition", "images", "city", "location_city", "zip_code", "region",
+    "state", "contact_name", "contact_phone", "contact_email",
+    "contact_whatsapp", "media_type", "youtube_url", "image_name",
+    "media_url", "media_path",
   ],
   events: [
     "title", "category", "subcategory", "description", "organizer_name",
@@ -60,16 +61,7 @@ export const createMine = async (req, res) => {
   const allowedFields = RESOURCES[resource];
   if (!allowedFields) return res.status(400).json({ message: "Unknown resource" });
 
-  // Jobs now support internal application workflow; apply_link is optional
-
-
-  if (resource === "events") {
-    if (!req.body.registration_link || !isGoogleFormUrl(req.body.registration_link)) {
-      return res.status(400).json({
-        message: "Event registration link must be a valid Google Form URL (e.g. https://forms.gle/... or https://docs.google.com/forms/...)",
-      });
-    }
-  }
+  // Events and Jobs now support native internal workflow; external links are optional
 
   const payload = { user_id: req.activeUser.id, status: DEFAULT_STATUS[resource] };
   for (const field of allowedFields) {
@@ -87,6 +79,11 @@ export const createMine = async (req, res) => {
     }
   }
 
+  if (resource === "classifieds") {
+    if (payload.location_city && !payload.city) payload.city = payload.location_city;
+    if (payload.city && !payload.location_city) payload.location_city = payload.city;
+  }
+
   const { data, error } = await supabase
     .from(resource)
     .insert([payload])
@@ -95,6 +92,34 @@ export const createMine = async (req, res) => {
 
   if (error) return res.status(500).json({ message: error.message });
   return res.json({ message: "Submitted for approval", item: data });
+};
+
+export const updateMine = async (req, res) => {
+  const { resource, id } = req.params;
+  const allowedFields = RESOURCES[resource];
+  if (!allowedFields) return res.status(400).json({ message: "Unknown resource" });
+
+  const payload = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) payload[field] = req.body[field];
+  }
+
+  if (resource === "classifieds") {
+    if (payload.location_city && !payload.city) payload.city = payload.location_city;
+    if (payload.city && !payload.location_city) payload.location_city = payload.city;
+    if (req.body.status === "sold") payload.status = "sold";
+  }
+
+  const { data, error } = await supabase
+    .from(resource)
+    .update(payload)
+    .eq("id", id)
+    .eq("user_id", req.activeUser.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ message: error.message });
+  return res.json({ message: "Updated successfully", item: data });
 };
 
 export const deleteMine = async (req, res) => {

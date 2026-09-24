@@ -230,12 +230,19 @@ const ManageClassifieds = () => {
 
                 <h3 className="ad-title">{ad.title}</h3>
 
-                {ad.price && (
-                  <div className="price-tag">
-                    <FaDollarSign className="price-icon" />
-                    <span>{ad.price}</span>
-                  </div>
-                )}
+                <div className="price-tag">
+                  {ad.is_free || !ad.price || parseFloat(ad.price) === 0 ? (
+                    <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "4px", fontSize: "0.85rem", fontWeight: 800 }}>FREE / DONATION</span>
+                  ) : (
+                    <>
+                      <FaDollarSign className="price-icon" />
+                      <span>{ad.price}</span>
+                    </>
+                  )}
+                  {ad.condition && (
+                    <span style={{ marginLeft: "8px", background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: "4px", fontSize: "0.78rem", fontWeight: 700 }}>{ad.condition}</span>
+                  )}
+                </div>
 
                 <p className="ad-desc">{ad.description}</p>
 
@@ -243,7 +250,7 @@ const ManageClassifieds = () => {
                   <div className="meta-item">
                     <FaMapMarkerAlt className="meta-icon" />
                     <span>
-                      {[ad.city, ad.region, ad.state, ad.zip_code].filter(Boolean).join(", ") || "Location not provided"}
+                      {[ad.location_city || ad.city, ad.region, ad.state, ad.zip_code].filter(Boolean).join(", ") || "Location not provided"}
                     </span>
                   </div>
                   <div className="meta-item">
@@ -251,6 +258,7 @@ const ManageClassifieds = () => {
                     <span>
                       <strong>{ad.contact_name || "Seller"}</strong>
                       {ad.contact_phone ? ` • ${ad.contact_phone}` : ""}
+                      {ad.contact_whatsapp ? ` • WA: ${ad.contact_whatsapp}` : ""}
                       {ad.contact_email ? ` • ${ad.contact_email}` : ""}
                     </span>
                   </div>
@@ -262,14 +270,21 @@ const ManageClassifieds = () => {
                       </a>
                     </div>
                   )}
-                  {ad.media_type === "image" && ad.media_url && (
-                    <div className="meta-item">
-                      <FaImage className="meta-icon" />
-                      <a href={ad.media_url} target="_blank" rel="noreferrer" className="media-link">
-                        View Attached Photo ↗
-                      </a>
-                    </div>
-                  )}
+                  {(() => {
+                    const imgs = Array.isArray(ad.images) && ad.images.length > 0 ? ad.images : ad.media_url ? [ad.media_url] : [];
+                    if (imgs.length === 0) return null;
+                    return (
+                      <div className="meta-item" style={{ flexWrap: "wrap", gap: "6px" }}>
+                        <FaImage className="meta-icon" />
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>{imgs.length} Photo{imgs.length > 1 ? "s" : ""}:</span>
+                        {imgs.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="media-link" style={{ fontSize: "11px" }}>
+                            [Photo {i + 1}]
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="ad-actions">

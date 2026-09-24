@@ -1,7 +1,36 @@
 import supabase from "../config/supabaseClient";
-import bcrypt from "bcryptjs";
 
 const API = import.meta.env.VITE_API_BASE_URL || "https://communityhub.sunflowerwebtek.com/api";
+
+/* ================= SESSION MANAGEMENT ================= */
+export const setAuthSession = (token, user) => {
+  if (token) localStorage.setItem("token", token);
+  if (user) localStorage.setItem("user", JSON.stringify(user));
+  window.dispatchEvent(new Event("auth-changed"));
+  window.dispatchEvent(new Event("profile-updated"));
+};
+
+export const clearAuthSession = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  window.dispatchEvent(new Event("auth-changed"));
+  window.dispatchEvent(new Event("profile-updated"));
+};
+
+export const getStoredUser = () => {
+  const token = localStorage.getItem("token");
+  if (!token) return null;
+  const userStr = localStorage.getItem("user");
+  try {
+    return userStr ? JSON.parse(userStr) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getAuthToken = () => {
+  return localStorage.getItem("token") || null;
+};
 
 /* ================= REGISTER ================= */
 export const registerUser = async (formData) => {
@@ -28,9 +57,8 @@ export const registerUser = async (formData) => {
       return null;
     }
 
-    // ✅ success message
+    // success message
     alert("Registration submitted. Waiting for admin approval.");
-
     return data;
   } catch (err) {
     console.error("Register error:", err);
@@ -54,8 +82,8 @@ export const loginUser = async (identifier, password) => {
       return null;
     }
 
-    // optional: store token
-    if (data.token) localStorage.setItem("token", data.token);
+    // Store token and user atomically
+    setAuthSession(data.token, data.user);
 
     return data.user;
   } catch (err) {
@@ -75,6 +103,7 @@ export const getAuthProvidersService = async () => {
     return null;
   }
 };
+
 
 
 

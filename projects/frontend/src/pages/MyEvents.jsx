@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import supabase from "../config/supabaseClient";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
-const GOOGLE_FORM_REGEX = /^(https?:\/\/)?(forms\.gle\/[a-zA-Z0-9_-]+|(docs|drive)\.google\.com\/forms\/[^\s]+)/i;
 
 const EVENT_CATEGORIES = {
   "Community Event": [
@@ -72,6 +71,12 @@ const MyEvents = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentUser, setCurrentUser] = useState(null);
   const [message, setMessage] = useState({ type: "", text: "" });
+
+  // Attendees Modal State
+  const [attendeesModalOpen, setAttendeesModalOpen] = useState(false);
+  const [activeEventAttendees, setActiveEventAttendees] = useState(null);
+  const [attendeesList, setAttendeesList] = useState([]);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
 
   useEffect(() => {
     getCurrentUser();
@@ -165,6 +170,40 @@ const MyEvents = () => {
     }
   };
 
+  const fetchAttendees = async (eventObj) => {
+    setActiveEventAttendees(eventObj);
+    setAttendeesModalOpen(true);
+    setLoadingAttendees(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await fetch(`${API}/events/${eventObj.id}/registrations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAttendeesList(data.registrations || []);
+          return;
+        }
+      }
+
+      // Direct fallback to Supabase
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select("*")
+        .eq("event_id", eventObj.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setAttendeesList(data);
+      }
+    } catch (err) {
+      console.error("Fetch attendees error:", err);
+    } finally {
+      setLoadingAttendees(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, files } = e.target;
 
@@ -194,11 +233,8 @@ const MyEvents = () => {
     if (!formData.venue_name.trim()) return "Venue name is required.";
     if (!formData.city.trim()) return "City is required.";
     if (!formData.state.trim()) return "State is required.";
-    if (!formData.registration_link || !formData.registration_link.trim()) {
-      return "Event registration link is required. Please provide a Google Form link.";
-    }
-    if (!GOOGLE_FORM_REGEX.test(formData.registration_link.trim())) {
-      return "Registration link must be a valid Google Form link (e.g. https://forms.gle/... or https://docs.google.com/forms/...)";
+    if (formData.registration_link.trim() && !/^https?:\/\//i.test(formData.registration_link.trim())) {
+      return "External link must start with http:// or https:// (or leave blank to use native internal registration).";
     }
     if (!currentUser) return "Please login first.";
 
@@ -1087,7 +1123,7 @@ const MyEvents = () => {
 
                   <div className="eventsFieldBlock">
                     <label className="eventsLabel">
-                      Registration Link (Google Form Link Required) <span style={{ color: "#ef4444" }}>*</span>
+                      External Event Website / Link (Optional)
                     </label>
                     <input
                       type="url"
@@ -1095,11 +1131,10 @@ const MyEvents = () => {
                       className="eventsInput"
                       value={formData.registration_link}
                       onChange={handleChange}
-                      placeholder="https://forms.gle/... or https://docs.google.com/forms/..."
-                      required
+                      placeholder="https://example.com/event-page (optional)"
                     />
-                    <div className="eventsHint" style={{ color: "#0284c7" }}>
-                      📋 Only Google Form links are accepted for event registration.
+                    <div className="eventsHint" style={{ color: "#059669" }}>
+                      ✓ Native in-platform RSVP is enabled automatically for all events.
                     </div>
                   </div>
                 </div>
@@ -1233,6 +1268,15 @@ const MyEvents = () => {
                             <p className="eventsDesc">{event.description || "-"}</p>
 
                             <div className="eventsCardBtns">
+                              <button
+                                type="button"
+                                className="eventsSmallBtn"
+                                style={{ background: "#0f766e", color: "#ffffff", borderColor: "#0f766e" }}
+                                onClick={() => fetchAttendees(event)}
+                              >
+                                👥 View Attendees
+                              </button>
+
                               {event.status === "approved" && (
                                 <>
                                   <button
@@ -1272,6 +1316,125 @@ const MyEvents = () => {
           </div>
         </div>
       </div>
+
+      {/* ATTENDEE LIST MODAL */}
+      {attendeesModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15, 23, 42, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => setAttendeesModalOpen(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 16,
+              maxWidth: 620,
+              width: "100%",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "18px 24px",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#f8fafc",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Event Registrations</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+                  {activeEventAttendees?.title} • {attendeesList.length} Registered
+                </p>
+              </div>
+              <button
+                style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#64748b" }}
+                onClick={() => setAttendeesModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: 20, overflowY: "auto", flex: 1 }}>
+              {loadingAttendees ? (
+                <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Loading registered attendees...</div>
+              ) : attendeesList.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                  No attendees have registered for this event yet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {attendeesList.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        padding: 14,
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#fafafa",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 15 }}>
+                          {item.attendee_name}
+                        </div>
+                        <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+                          ✉ {item.attendee_email} • 📞 {item.attendee_phone}
+                        </div>
+                        {item.notes && (
+                          <div style={{ fontSize: 12, color: "#475569", marginTop: 4, fontStyle: "italic" }}>
+                            Note: "{item.notes}"
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span
+                          style={{
+                            background: "#dcfce7",
+                            color: "#166534",
+                            padding: "4px 10px",
+                            borderRadius: 20,
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {item.number_of_guests || 1} {item.number_of_guests === 1 ? "Guest" : "Guests"}
+                        </span>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                          {item.created_at ? new Date(item.created_at).toLocaleDateString() : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import supabase from "../config/supabaseClient";
+import { clearAuthSession } from "../services/authService";
 
 import Sidebar from "./Sidebar";
 import Profile from "./Profile";
 import VerificationUpload from "../components/user/VerificationUpload";
-import CreateCollective from "../components/user/CreateCollective";
-import MessagingCenter from "./MessagingCenter";
 import MyEvents from "./MyEvents";
 import MyJobs from "./MyJobs";
+import MyClassifieds from "./MyClassifieds";
+import MyDirectory from "./MyDirectory";
 
 import "./dashboard.css";
 
@@ -29,9 +30,10 @@ const Dashboard = () => {
   }, [location.search]);
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    localStorage.removeItem("token");
-    window.dispatchEvent(new Event("profile-updated"));
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    clearAuthSession();
     navigate("/");
   };
 
@@ -44,8 +46,10 @@ const Dashboard = () => {
         return <MyJobs />;
       case "my-events":
         return <MyEvents />;
-      case "messages":
-        return <MessagingCenter />;
+      case "my-classifieds":
+        return <MyClassifieds />;
+      case "my-directory":
+        return <MyDirectory />;
       default:
         return <Profile />;
     }
@@ -55,7 +59,7 @@ const Dashboard = () => {
     <div className="dashboard-layout">
       <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={logout} />
 
-      <div className="dashboard-main" style={{ padding: activePage === "messages" ? 0 : "24px" }}>
+      <div className="dashboard-main" style={{ padding: "24px" }}>
         {renderPage()}
       </div>
     </div>

@@ -62,47 +62,7 @@ export default function Home() {
           .limit(10);
 
         const activeUpcoming = (eventData || []).filter((ev) => !isEventPast(ev)).slice(0, 3);
-
-        if (activeUpcoming.length > 0) {
-          setUpcomingEvents(activeUpcoming);
-        } else {
-          // Curated showcase if live events are being seeded
-          setUpcomingEvents([
-            {
-              id: "evt-1",
-              title: "Annual Community NGO Summit & Fair",
-              category: "Community Event",
-              event_date: "2026-09-20",
-              event_time: "10:00:00",
-              venue_name: "Community Center Hall",
-              city: "San Francisco",
-              state: "CA",
-              description: "Gather with community organizers, non-profits, and civic volunteers to share resources.",
-            },
-            {
-              id: "evt-2",
-              title: "Non-Profit Grant & Financial Workshop",
-              category: "Workshop",
-              event_date: "2026-09-28",
-              event_time: "14:00:00",
-              venue_name: "Civic Library Auditorium",
-              city: "Oakland",
-              state: "CA",
-              description: "Practical guidance on grant writing, compliance, and donor relations for non-profits.",
-            },
-            {
-              id: "evt-3",
-              title: "Heritage Cultural Festival & Bazaar",
-              category: "Cultural Program",
-              event_date: "2026-10-05",
-              event_time: "11:00:00",
-              venue_name: "Heritage Plaza",
-              city: "San Jose",
-              state: "CA",
-              description: "Celebrate regional arts, traditional cuisine, music performances, and local craft vendors.",
-            },
-          ]);
-        }
+        setUpcomingEvents(activeUpcoming || []);
 
         // 2. Fetch approved collectives
         const { data: colData } = await supabase
@@ -111,42 +71,7 @@ export default function Home() {
           .eq("status", "approved")
           .limit(3);
 
-        if (colData && colData.length > 0) {
-          setFeaturedCollectives(colData);
-        } else {
-          setFeaturedCollectives([
-            {
-              id: "col-1",
-              name: "Bombay Sweets & Heritage Bakers",
-              slug: "bombaysweets",
-              category: "Food & Confectionery",
-              city: "Fremont",
-              state: "CA",
-              description: "Authentic artisanal sweets, traditional catering, and community festival partner.",
-              verification_status: "verified",
-            },
-            {
-              id: "col-2",
-              name: "Youth Empowerment Initiative",
-              slug: "youth-empowerment",
-              category: "Education & Non-Profit",
-              city: "San Francisco",
-              state: "CA",
-              description: "Mentoring next-generation civic leaders through STEM workshops and scholarships.",
-              verification_status: "verified",
-            },
-            {
-              id: "col-3",
-              name: "Golden Gate Cultural Circle",
-              slug: "goldengate-culture",
-              category: "Cultural & Arts",
-              city: "Berkeley",
-              state: "CA",
-              description: "Preserving folk arts, hosting classical concerts, and supporting community festivals.",
-              verification_status: "verified",
-            },
-          ]);
-        }
+        setFeaturedCollectives(colData || []);
       } catch (err) {
         console.error("Home data fetch error:", err);
       } finally {
@@ -980,7 +905,7 @@ export default function Home() {
           {/* Popular Search Tags */}
           <div className="trending-tags">
             <span className="trending-label">Popular Searches:</span>
-            {["Bombay Sweets", "Education", "Cultural", "Charity", "Workshop", "Civic"].map((tag) => (
+            {["Food & Dining", "Education", "Cultural", "Charity", "Workshop", "Civic"].map((tag) => (
               <span key={tag} className="tag-pill" onClick={() => handleTagClick(tag)}>
                 {tag}
               </span>

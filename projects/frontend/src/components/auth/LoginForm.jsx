@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { loginUser } from "../../services/authService";
+import { loginUser, setAuthSession } from "../../services/authService";
 import supabase from "../../config/supabaseClient";
 
 const LoginForm = () => {
@@ -54,8 +54,7 @@ const LoginForm = () => {
         }
 
         if (data.approved) {
-          if (data.token) localStorage.setItem("token", data.token);
-          window.dispatchEvent(new Event("profile-updated"));
+          setAuthSession(data.token, data.user);
           navigate("/dashboard");
         } else {
           alert("Account created. Waiting for admin approval before you can log in.");
@@ -186,7 +185,7 @@ const LoginForm = () => {
 
     if (otpIntent === "login") {
       // Existing, approved user — we're done, session token issued already.
-      if (data.token) localStorage.setItem("token", data.token);
+      setAuthSession(data.token, data.user);
       navigate("/dashboard");
       return;
     }
@@ -213,8 +212,7 @@ const LoginForm = () => {
     if (!res.ok) return alert(data.message || "Signup failed");
 
     // Auto-approved: log them straight in, same as any other login.
-    if (data.token) localStorage.setItem("token", data.token);
-    window.dispatchEvent(new Event("profile-updated"));
+    setAuthSession(data.token, data.user);
     navigate("/dashboard");
   };
 
@@ -266,8 +264,7 @@ const LoginForm = () => {
     const data = await res.json();
     if (!res.ok) return alert(data.message || "OTP verification failed");
 
-    if (data.token) localStorage.setItem("token", data.token);
-    window.dispatchEvent(new Event("profile-updated"));
+    setAuthSession(data.token, data.user);
     navigate("/dashboard");
   };
 

@@ -1,14 +1,21 @@
 import { useState, useEffect } from "react";
 import supabase from "../../config/supabaseClient";
 
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+
 export default function VerificationUpload() {
   const [status, setStatus] = useState("unverified");
-  const [notes, setNotes] = useState("");
-  const [accountRole, setAccountRole] = useState("employer"); // 'employer' | 'employee'
+  const [rejectionReason, setRejectionReason] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [idType, setIdType] = useState("company_registration");
-  const [redactedUrl, setRedactedUrl] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+
+  const [docFile, setDocFile] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [docPreview, setDocPreview] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -19,460 +26,562 @@ export default function VerificationUpload() {
 
   const fetchStatus = async () => {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
-
-      if (user) {
-        // Query id_verifications table for current user
-        const { data: verData } = await supabase
-          .from("id_verifications")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("submitted_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (verData) {
-          setStatus(verData.status || "pending");
-          if (verData.document_url) {
-            if (verData.document_url.startsWith("http")) {
-              setRedactedUrl(verData.document_url);
-            } else {
-              const { data: urlData } = supabase.storage
-                .from("id-documents")
-                .getPublicUrl(verData.document_url);
-              setRedactedUrl(urlData?.publicUrl || verData.document_url);
-            }
-          }
-        }
-      }
-
-      // Check backend API for additional status notes
       const token = localStorage.getItem("token");
       if (token) {
-        const res = await fetch("http://localhost:5000/api/verification/status", {
+        const res = await fetch(`${API}/verification/organization/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.verification_status) setStatus(data.verification_status);
-          if (data.verification_notes) setNotes(data.verification_notes);
-          if (data.redacted_id_url && !redactedUrl) setRedactedUrl(data.redacted_id_url);
-          if (data.id_type) setIdType(data.id_type);
-          if (data.role === "employer") {
-            setAccountRole("employer");
-          } else if (data.role === "employee" || data.role === "user") {
-            setAccountRole(data.role === "employer" ? "employer" : "employee");
+          if (data.verification) {
+            const v = data.verification;
+            setStatus(v.status || "unverified");
+            setCompanyName(v.company_name || "");
+            setRegistrationNumber(v.registration_number || "");
+            setDocumentUrl(v.document_url || "");
+            setPhotoUrl(v.photo_url || "");
+            setRejectionReason(v.rejection_reason || "");
+            if (v.document_url) setDocPreview(v.document_url);
+            if (v.photo_url) setPhotoPreview(v.photo_url);
+            setLoading(false);
+            return;
           }
-          if (data.company_name) setCompanyName(data.company_name);
         }
-      } else {
-        const cachedUser = localStorage.getItem("user");
-        if (cachedUser) {
-          try {
-            const u = JSON.parse(cachedUser);
-            if (u.role === "employer") setAccountRole("employer");
-            if (u.company_name) setCompanyName(u.company_name);
-          } catch {}
+      }
+
+      // Supabase direct fallback
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
+
+      if (user) {
+        const { data: orgData } = await supabase
+          .from("organization_verifications")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (orgData) {
+          setStatus(orgData.status || "pending");
+          setCompanyName(orgData.company_name || "");
+          setRegistrationNumber(orgData.registration_number || "");
+          setDocumentUrl(orgData.document_url || "");
+          setPhotoUrl(orgData.photo_url || "");
+          setRejectionReason(orgData.rejection_reason || "");
+          if (orgData.document_url) setDocPreview(orgData.document_url);
+          if (orgData.photo_url) setPhotoPreview(orgData.photo_url);
         }
       }
     } catch (e) {
-      console.error("Verification status fetch error:", e);
+      console.error("Organization verification fetch error:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      setRedactedUrl(URL.createObjectURL(file));
+  const uploadFile = async (file, bucket = "verification-docs") => {
+    if (!file) return null;
+
+    // 1. Try backend endpoint
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+        });
+
+        const res = await fetch(`${API}/verification/upload-doc`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileData: base64,
+            fileType: file.type,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) return data.url;
+        }
+      } catch (err) {
+        console.warn("Backend upload error, trying Supabase storage:", err);
+      }
     }
+
+    // 2. Direct Supabase Storage upload
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id || "org";
+      const ext = file.name.split(".").pop();
+      const sPath = `${uid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(bucket)
+        .upload(sPath, file, { upsert: true });
+
+      if (!upErr) {
+        const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(sPath);
+        return pubData?.publicUrl || sPath;
+      }
+    } catch (supaErr) {
+      console.warn("Supabase storage upload error:", supaErr);
+    }
+
+    // 3. Fallback to Data URL
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMsg(null);
 
-    if (!selectedFile && !redactedUrl) {
-      return setMsg({ type: "error", text: "Please choose a redacted ID image file or paste a URL" });
+    if (!companyName.trim()) {
+      return setMsg({ type: "error", text: "Please enter your Company / Organization Name" });
+    }
+
+    if (!docFile && !documentUrl) {
+      return setMsg({
+        type: "error",
+        text: "Please upload an official registration document or certificate",
+      });
     }
 
     setSubmitting(true);
 
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      let user = authData?.user;
+      let finalDocUrl = documentUrl;
+      let finalPhotoUrl = photoUrl;
 
-      if (!user) {
-        const cached = localStorage.getItem("user");
-        if (cached) {
-          try {
-            user = JSON.parse(cached);
-          } catch {}
-        }
+      if (docFile) {
+        finalDocUrl = await uploadFile(docFile, "verification-docs");
+      }
+      if (photoFile) {
+        finalPhotoUrl = await uploadFile(photoFile, "verification-docs");
       }
 
-      let filePath = redactedUrl;
+      const payload = {
+        company_name: companyName.trim(),
+        registration_number: registrationNumber.trim() || null,
+        document_url: finalDocUrl,
+        photo_url: finalPhotoUrl || null,
+      };
 
-      // 1. Storage Upload: Save file into 'id-documents' bucket with graceful fallback
-      if (selectedFile) {
-        try {
-          const fileExt = selectedFile.name.split(".").pop() || "jpg";
-          const uid = user?.id || "guest";
-          const sPath = `${uid}/${Date.now()}_id.${fileExt}`;
-
-          const { error: uploadErr } = await supabase.storage
-            .from("id-documents")
-            .upload(sPath, selectedFile, { upsert: true });
-
-          if (!uploadErr) {
-            const { data: pubData } = supabase.storage.from("id-documents").getPublicUrl(sPath);
-            filePath = pubData?.publicUrl || sPath;
-          } else {
-            console.warn("Storage upload notice (falling back to data URL):", uploadErr.message);
-          }
-        } catch (err) {
-          console.warn("Storage upload exception, fallback to data URL:", err);
-        }
-
-        // If upload wasn't successful or bucket missing, convert to data URL
-        if (!filePath || filePath.startsWith("blob:")) {
-          filePath = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = () => resolve(redactedUrl);
-            reader.readAsDataURL(selectedFile);
-          });
-        }
-      }
-
-      // 2. Insert row into id_verifications table
-      if (user?.id) {
-        const { error: insertErr } = await supabase.from("id_verifications").insert({
-          user_id: user.id,
-          document_url: filePath,
-          status: "pending",
-        });
-
-        if (insertErr) {
-          console.warn("id_verifications insert notice:", insertErr.message);
-        }
-      }
-
-      // 3. API Sync if backend service is active
       const token = localStorage.getItem("token");
       if (token) {
-        try {
-          await fetch("http://localhost:5000/api/verification/upload", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              redacted_id_url: filePath,
-              id_type: idType,
-              role: accountRole,
-              company_name: companyName,
-            }),
-          });
-        } catch (apiErr) {
-          console.warn("API sync notice:", apiErr.message);
+        const res = await fetch(`${API}/verification/organization`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || "Failed to submit organization verification");
         }
+      } else {
+        // Fallback directly to Supabase table
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) throw new Error("Please log in to submit verification");
+
+        const { error: insErr } = await supabase.from("organization_verifications").insert([
+          {
+            user_id: authData.user.id,
+            ...payload,
+            status: "pending",
+          },
+        ]);
+        if (insErr) throw insErr;
       }
 
-      // 4. Update local user cache
+      // Update local storage user profile
       const cached = localStorage.getItem("user");
       if (cached) {
         try {
           const u = JSON.parse(cached);
-          u.role = accountRole;
-          u.company_name = companyName;
+          u.company_name = companyName.trim();
           u.verification_status = "pending";
           localStorage.setItem("user", JSON.stringify(u));
           window.dispatchEvent(new Event("profile-updated"));
         } catch {}
       }
 
+      setStatus("pending");
+      setDocumentUrl(finalDocUrl);
+      setPhotoUrl(finalPhotoUrl);
       setMsg({
         type: "success",
-        text: `Official ${accountRole === "employer" ? "Employer" : "Employee"} ID submitted successfully! It is now pending administrator review.`,
+        text: "Organization verification submitted successfully! It is now pending administrator review. Once approved, you can publish job openings.",
       });
-      setStatus("pending");
     } catch (err) {
-      setMsg({ type: "error", text: err.message });
+      setMsg({ type: "error", text: err.message || "Submission failed" });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const statusColors = {
+  const statusBadges = {
     unverified: { bg: "#f1f5f9", text: "#475569", label: "Unverified" },
-    pending: { bg: "#fef3c7", text: "#b45309", label: "⏳ Verification Pending Review" },
-    verified: { bg: "#d1fae5", text: "#047857", label: "✓ ID Verified Account" },
+    pending: { bg: "#fef3c7", text: "#b45309", label: "⏳ Pending Administrator Review" },
+    approved: { bg: "#d1fae5", text: "#047857", label: "✓ Verified Organization" },
+    verified: { bg: "#d1fae5", text: "#047857", label: "✓ Verified Organization" },
     rejected: { bg: "#ffe4e6", text: "#e11d48", label: "✖ Verification Rejected" },
   };
 
-  const currentPill = statusColors[status] || statusColors.unverified;
+  const currentBadge = statusBadges[status] || statusBadges.unverified;
+  const isApproved = status === "approved" || status === "verified";
 
-  if (loading) return <div>Loading verification status...</div>;
+  if (loading) return <div style={{ padding: 30, color: "#64748b" }}>Loading organization verification status...</div>;
 
   return (
-    <div className="verification-card">
-      <div className="verification-header">
+    <div className="org-verif-container">
+      <div className="org-verif-header">
         <div>
-          <h3 style={{ margin: 0 }}>Employer & Organization ID Verification</h3>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-            Official verification is required for <strong>Employers</strong> to post jobs. Employees and job seekers do <em>not</em> need to submit any official ID.
+          <h2>Organization & Employer Verification</h2>
+          <p>
+            Official verification is required for organizations and employers before publishing jobs.
+            Your documentation is reviewed by platform administrators to ensure safety and credibility.
           </p>
         </div>
         <span
-          className="status-pill"
-          style={{ backgroundColor: currentPill.bg, color: currentPill.text }}
+          className="org-status-pill"
+          style={{ backgroundColor: currentBadge.bg, color: currentBadge.text }}
         >
-          {currentPill.label}
+          {currentBadge.label}
         </span>
       </div>
 
-      {notes && (
-        <div className="admin-notes-box">
-          <strong>Admin Review Note:</strong> {notes}
+      {/* STATUS NOTICES */}
+      {isApproved && (
+        <div className="org-alert-banner success">
+          <strong>✓ Organization Verified & Job Posting Unlocked</strong>
+          <p>
+            Your organization <strong>{companyName}</strong> has been reviewed and approved by administrators.
+            You have full permissions to post and manage recruitment openings in the <strong>My Jobs</strong> portal.
+          </p>
         </div>
       )}
 
-      {accountRole === "employee" ? (
-        <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "20px", marginTop: "16px" }}>
-          <h4 style={{ color: "#065f46", margin: "0 0 6px" }}>✓ Employee / Job Seeker Mode</h4>
-          <p style={{ color: "#047857", fontSize: "14px", margin: "0 0 14px", lineHeight: "1.5" }}>
-            Good news! As an employee or candidate, <strong>you do not need to verify an official ID</strong>. You have full access to explore the community, view verified job listings, and apply directly using recruiters' Google Forms.
+      {status === "pending" && (
+        <div className="org-alert-banner warning">
+          <strong>⏳ Verification Under Review</strong>
+          <p>
+            Your organization verification for <strong>{companyName}</strong> has been submitted and is currently
+            being reviewed by our administration team. Once verified, job posting permissions will be granted automatically.
           </p>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <a href="/jobs" style={{ display: "inline-block", background: "#047857", color: "#fff", padding: "9px 18px", borderRadius: "8px", textDecoration: "none", fontWeight: "700", fontSize: "13px" }}>
-              Explore Jobs ↗
-            </a>
-            <button
-              type="button"
-              onClick={() => { setAccountRole("employer"); setIdType("company_registration"); }}
-              style={{ background: "#fff", border: "1px solid #cbd5e1", padding: "9px 16px", borderRadius: "8px", fontWeight: "600", fontSize: "13px", cursor: "pointer" }}
-            >
-              Switch to Employer Verification
-            </button>
-          </div>
         </div>
-      ) : (
-        <>
-          {/* REDACTION GUIDELINES */}
-          <div className="redaction-guide">
-            <h4>🔒 Organization Document Guidelines:</h4>
-            <ul>
-              <li><strong>Acceptable Documents:</strong> Certificate of Incorporation, Business Registration, Tax ID / GST, Commercial License, or HR Official ID.</li>
-              <li><strong>Privacy:</strong> Please redact any personal banking or sensitive identification numbers not needed for corporate verification.</li>
-            </ul>
-          </div>
+      )}
 
-          {msg && (
-            <div className={`alert-msg ${msg.type}`}>
-              {msg.text}
+      {status === "rejected" && (
+        <div className="org-alert-banner danger">
+          <strong>✖ Verification Not Approved</strong>
+          <p>
+            {rejectionReason || "Your verification documents did not meet platform guidelines."}
+            <br />
+            Please update your organization details or submit a clearer document below.
+          </p>
+        </div>
+      )}
+
+      {/* GUIDELINES */}
+      <div className="org-guidelines">
+        <h4>📋 Verification Requirements</h4>
+        <ul>
+          <li><strong>Official Document:</strong> Certificate of Incorporation, GST / Tax ID Certificate, Business License, or Corporate Letterhead.</li>
+          <li><strong>Organization Photo:</strong> Storefront, office building, workspace, or company signage to build community trust.</li>
+          <li><strong>Privacy Protection:</strong> Sensitive financial records or banking details may be redacted before uploading.</li>
+        </ul>
+      </div>
+
+      {msg && <div className={`org-alert ${msg.type}`}>{msg.text}</div>}
+
+      {/* VERIFICATION FORM */}
+      <form onSubmit={handleSubmit} className="org-verif-form">
+        <div className="form-row">
+          <label>
+            Company / Organization Name <span style={{ color: "#ef4444" }}>*</span>
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Apollo Health Care, Acme Tech Labs"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            required
+            disabled={isApproved}
+          />
+        </div>
+
+        <div className="form-row">
+          <label>Registration / Tax Identification Number (Optional)</label>
+          <input
+            type="text"
+            placeholder="e.g. GSTIN, CIN, EIN, or Business Registration No"
+            value={registrationNumber}
+            onChange={(e) => setRegistrationNumber(e.target.value)}
+            disabled={isApproved}
+          />
+        </div>
+
+        {/* REGISTRATION DOCUMENT */}
+        <div className="form-row">
+          <label>
+            Official Registration Document (PDF or Image) <span style={{ color: "#ef4444" }}>*</span>
+          </label>
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setDocFile(file);
+                if (file.type.startsWith("image/")) {
+                  setDocPreview(URL.createObjectURL(file));
+                } else {
+                  setDocPreview(file.name);
+                }
+              }
+            }}
+            disabled={isApproved}
+          />
+          <small className="field-hint">Upload Incorporation Certificate, Trade License, or Tax ID Document.</small>
+
+          {docPreview && (
+            <div className="preview-wrap">
+              {docPreview.startsWith("http") || docPreview.startsWith("blob:") ? (
+                <img src={docPreview} alt="Registration Document Preview" className="preview-thumb" />
+              ) : (
+                <div className="preview-doc-badge">📄 {docPreview}</div>
+              )}
             </div>
           )}
+        </div>
 
-          <form onSubmit={handleSubmit} className="verification-form">
-            <div className="form-group">
-              <label>Company / Organization Name <span style={{ color: "#ef4444" }}>*</span></label>
-              <input
-                type="text"
-                placeholder="e.g. Acme Innovations Pvt Ltd"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                required
-                disabled={status === "verified"}
-              />
+        {/* STOREFRONT / OFFICE PHOTO */}
+        <div className="form-row">
+          <label>Organization / Storefront Photo (Recommended)</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setPhotoFile(file);
+                setPhotoPreview(URL.createObjectURL(file));
+              }
+            }}
+            disabled={isApproved}
+          />
+          <small className="field-hint">Upload a real photograph of your office exterior, workplace, or storefront.</small>
+
+          {photoPreview && (
+            <div className="preview-wrap">
+              <img src={photoPreview} alt="Organization Photo Preview" className="preview-thumb" />
             </div>
+          )}
+        </div>
 
-            <div className="form-group">
-              <label>Official Document Type:</label>
-              <select value={idType} onChange={(e) => setIdType(e.target.value)}>
-                <option value="company_registration">Business / Incorporation Registration Document</option>
-                <option value="tax_id">Tax ID / Business PAN / GST Certificate</option>
-                <option value="business_license">Commercial Operating License</option>
-                <option value="employer_hr_id">HR / Recruiter Official Employee ID Card</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Upload Official Employer Document File (Image / PDF):</label>
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={handleFileChange}
-                disabled={status === "verified"}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Or Paste Redacted Image URL / Cloud Storage Link:</label>
-              <input
-                type="text"
-                placeholder="https://example.com/uploads/my-redacted-id.jpg"
-                value={typeof redactedUrl === "string" && !redactedUrl.startsWith("blob:") ? redactedUrl : ""}
-                onChange={(e) => {
-                  setSelectedFile(null);
-                  setRedactedUrl(e.target.value);
-                }}
-                disabled={status === "verified"}
-              />
-            </div>
-
-            {redactedUrl && (
-              <div className="preview-box">
-                <span style={{ fontSize: 12, fontWeight: "bold", display: "block", marginBottom: 6 }}>
-                  Document Image Preview:
-                </span>
-                <img
-                  src={redactedUrl}
-                  alt="Document Preview"
-                  style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }}
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="submit-btn"
-              disabled={submitting || status === "verified"}
-            >
-              {submitting
-                ? "Uploading & Submitting..."
-                : status === "pending"
-                ? "Re-submit Employer Document"
-                : "Submit Employer Verification"}
-            </button>
-          </form>
-        </>
-      )}
+        {!isApproved && (
+          <button type="submit" className="org-submit-btn" disabled={submitting}>
+            {submitting
+              ? "Submitting Verification..."
+              : status === "rejected"
+              ? "Re-Submit Organization Verification"
+              : status === "pending"
+              ? "Update Organization Verification"
+              : "Submit Organization Verification"}
+          </button>
+        )}
+      </form>
 
       <style>{`
-        .verification-card {
-          background: white;
-          border-radius: 14px;
-          padding: 24px;
+        .org-verif-container {
+          background: #ffffff;
+          border-radius: 16px;
+          padding: 28px;
           border: 1px solid #e2e8f0;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-          margin-bottom: 24px;
-          font-family: system-ui, sans-serif;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          max-width: 820px;
         }
 
-        .verification-header {
+        .org-verif-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          margin-bottom: 18px;
+          align-items: flex-start;
+          gap: 16px;
+          margin-bottom: 20px;
           flex-wrap: wrap;
-          gap: 10px;
         }
 
-        .status-pill {
+        .org-verif-header h2 {
+          margin: 0 0 6px;
+          font-size: 22px;
+          color: #0f172a;
+          font-weight: 800;
+        }
+
+        .org-verif-header p {
+          margin: 0;
+          font-size: 13.5px;
+          color: #64748b;
+          line-height: 1.5;
+          max-width: 600px;
+        }
+
+        .org-status-pill {
           padding: 6px 14px;
-          border-radius: 20px;
+          border-radius: 999px;
           font-size: 12px;
           font-weight: 700;
+          white-space: nowrap;
         }
 
-        .admin-notes-box {
-          background: #fff1f2;
-          border-left: 4px solid #e11d48;
-          color: #9f1239;
-          padding: 12px;
-          border-radius: 6px;
-          font-size: 13px;
-          margin-bottom: 18px;
-        }
-
-        .redaction-guide {
-          background: #f8fafc;
-          border: 1px solid #cbd5e1;
-          border-radius: 10px;
+        .org-alert-banner {
           padding: 14px 18px;
+          border-radius: 12px;
           margin-bottom: 20px;
+          font-size: 13.5px;
+          line-height: 1.5;
+        }
+        .org-alert-banner.success {
+          background: #f0fdf4;
+          border: 1px solid #bbf7d0;
+          color: #166534;
+        }
+        .org-alert-banner.warning {
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          color: #92400e;
+        }
+        .org-alert-banner.danger {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
         }
 
-        .redaction-guide h4 {
+        .org-guidelines {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 16px 20px;
+          margin-bottom: 24px;
+        }
+        .org-guidelines h4 {
           margin: 0 0 8px;
-          font-size: 14px;
-          color: #0f172a;
+          font-size: 13.5px;
+          color: #1e293b;
+          font-weight: 700;
         }
-
-        .redaction-guide ul {
+        .org-guidelines ul {
           margin: 0;
           padding-left: 20px;
           font-size: 13px;
           color: #475569;
-        }
-
-        .verification-form {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .form-group {
           display: flex;
           flex-direction: column;
           gap: 6px;
         }
 
-        .form-group label {
-          font-size: 13px;
+        .org-verif-form {
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        .form-row {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .form-row label {
+          font-size: 13.5px;
           font-weight: 600;
           color: #334155;
         }
 
-        .form-group input, .form-group select {
-          padding: 10px 14px;
-          border-radius: 8px;
+        .form-row input[type="text"] {
+          padding: 11px 14px;
+          border-radius: 10px;
           border: 1px solid #cbd5e1;
           font-size: 14px;
           outline: none;
         }
+        .form-row input[type="file"] {
+          font-size: 13px;
+          color: #475569;
+        }
 
-        .preview-box {
-          border: 1px dashed #cbd5e1;
+        .field-hint {
+          font-size: 12px;
+          color: #64748b;
+        }
+
+        .preview-wrap {
+          margin-top: 8px;
           padding: 10px;
-          border-radius: 8px;
-          background: #fafafa;
+          border: 1px dashed #cbd5e1;
+          border-radius: 10px;
+          background: #f8fafc;
+          display: inline-block;
+          max-width: 320px;
         }
-
-        .preview-img {
-          max-height: 200px;
+        .preview-thumb {
+          max-height: 140px;
           max-width: 100%;
-          border-radius: 6px;
-          object-fit: contain;
+          border-radius: 8px;
+          object-fit: cover;
+          display: block;
+        }
+        .preview-doc-badge {
+          font-size: 13px;
+          font-weight: 600;
+          color: #0f766e;
         }
 
-        .submit-btn {
-          background: #0f766e;
-          color: white;
+        .org-submit-btn {
+          margin-top: 10px;
+          background: linear-gradient(135deg, #0f766e, #16a34a);
+          color: #ffffff;
           border: none;
-          padding: 12px;
-          border-radius: 8px;
+          padding: 14px;
+          border-radius: 10px;
+          font-size: 15px;
           font-weight: 700;
           cursor: pointer;
-          transition: 0.2s;
+          transition: filter 0.15s ease;
+        }
+        .org-submit-btn:hover {
+          filter: brightness(1.05);
+        }
+        .org-submit-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
         }
 
-        .submit-btn:hover { background: #0d9488; }
-        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .alert-msg {
-          padding: 10px 14px;
-          border-radius: 8px;
-          font-size: 13px;
-          margin-bottom: 12px;
+        .org-alert {
+          padding: 12px 16px;
+          border-radius: 10px;
+          font-size: 13.5px;
+          font-weight: 600;
+          margin-bottom: 16px;
         }
-        .alert-msg.success { background: #d1fae5; color: #047857; }
-        .alert-msg.error { background: #ffe4e6; color: #e11d48; }
+        .org-alert.success { background: #dcfce7; color: #166534; }
+        .org-alert.error { background: #fee2e2; color: #991b1b; }
       `}</style>
     </div>
   );

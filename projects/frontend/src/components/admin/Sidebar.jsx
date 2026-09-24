@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import supabase from "../../config/supabaseClient";
+import { clearAuthSession } from "../../services/authService";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -12,6 +13,14 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
     directory: 0,
     classifieds: 0,
   });
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    clearAuthSession();
+    navigate("/admin-login");
+  };
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -62,11 +71,11 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
 
   const navItems = [
     { id: "dashboard", label: "Dashboard Overview", icon: "📊" },
-    { id: "verifications", label: "ID Verifications", icon: "🆔" },
+    { id: "verifications", label: "Organization Verifications", icon: "🏢" },
     { id: "users", label: "Users & RBAC", icon: "👥" },
     { id: "events", label: "Events Moderation", icon: "📅", badge: counts.events },
     { id: "jobs", label: "Jobs Moderation", icon: "💼", badge: counts.jobs },
-    { id: "directory", label: "Directory & Vendors", icon: "🏢", badge: counts.directory },
+    { id: "directory", label: "Directory & Vendors", icon: "🏪", badge: counts.directory },
     { id: "classifieds", label: "Classifieds", icon: "🛒", badge: counts.classifieds },
     { id: "theme", label: "Theme & Layout", icon: "🎨" },
   ];
@@ -111,7 +120,7 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
         })}
       </div>
 
-      {/* User Portal Link */}
+      {/* User Portal & Logout */}
       <div className="footerSection">
         <div className="userDashLink" onClick={() => navigate("/dashboard")}>
           <div className="navLeft">
@@ -119,6 +128,27 @@ const Sidebar = ({ activePage = "dashboard", setActivePage }) => {
             <span>User Dashboard</span>
           </div>
           <span>→</span>
+        </div>
+        <div
+          className="adminLogoutLink"
+          onClick={handleLogout}
+          style={{
+            marginTop: 8,
+            display: "flex",
+            alignItems: "center",
+            padding: "8px 14px",
+            borderRadius: 8,
+            color: "#dc2626",
+            background: "#fef2f2",
+            border: "1px solid #fee2e2",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            gap: 10,
+          }}
+        >
+          <span>⎋</span>
+          <span>Admin Logout</span>
         </div>
       </div>
 

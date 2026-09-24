@@ -121,17 +121,19 @@ export default function MyJobs() {
       const token = localStorage.getItem("token");
       if (token) {
         try {
-          const res = await fetch(`${API}/verification/status`, {
+          const res = await fetch(`${API}/verification/organization/status`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (res.ok) {
-            const vData = await res.json();
+            const data = await res.json();
+            const vData = data.verification || {};
             setVerification({
-              status: vData.verification_status || "unverified",
-              role: vData.role || (userObj?.role || "user"),
+              status: vData.status || "unverified",
+              role: "employer",
               company_name: vData.company_name || (userObj?.company_name || ""),
-              id_type: vData.id_type || "",
-              redacted_id_url: vData.redacted_id_url || "",
+              id_type: vData.registration_number || "",
+              redacted_id_url: vData.document_url || "",
+              rejection_reason: vData.rejection_reason || "",
             });
             if (vData.company_name) {
               setJobForm((prev) => ({ ...prev, company_name: vData.company_name }));
@@ -143,10 +145,11 @@ export default function MyJobs() {
       } else if (userObj) {
         setVerification({
           status: userObj.verification_status || "unverified",
-          role: userObj.role || "user",
+          role: "employer",
           company_name: userObj.company_name || "",
-          id_type: userObj.id_type || "",
+          id_type: "",
           redacted_id_url: userObj.id_document_url || "",
+          rejection_reason: "",
         });
       }
 
@@ -302,13 +305,6 @@ export default function MyJobs() {
     }
   };
 
-  const isVerifiedEmployer =
-    verification.role === "employer" &&
-    (verification.status === "verified" || verification.status === "approved" || verification.status === "pending");
-
-  const isVerifiedEmployee =
-    verification.role === "employee" ||
-    (verification.role === "user" && (verification.status === "verified" || verification.status === "approved"));
 
   // Handle Official ID Submission
   const handleVerifySubmit = async (e) => {
@@ -608,6 +604,9 @@ export default function MyJobs() {
     return c;
   }, [jobs]);
 
+  const isVerifiedEmployer =
+    verification.status === "approved" || verification.status === "verified";
+
   return (
     <div className="my-jobs-container">
       {/* HEADER ROW */}
@@ -630,8 +629,8 @@ export default function MyJobs() {
               <FaPlus /> {showPost ? "Close Post Form" : "Post a New Job"}
             </button>
           ) : (
-            <button className="btn-primary" onClick={() => setShowVerifyModal(true)}>
-              <FaShieldAlt /> Verify Official ID to Post Job
+            <button className="btn-primary" onClick={() => navigate("/dashboard?tab=verification")}>
+              <FaShieldAlt /> Verify Organization to Post Jobs
             </button>
           )}
         </div>
@@ -644,43 +643,61 @@ export default function MyJobs() {
         </div>
       )}
 
-      {/* EMPLOYER VERIFICATION GATE BANNER */}
-      {verification.role !== "employer" && (
-        <div className="verification-employee-banner">
-          <FaUserCheck className="status-icon" />
-          <div style={{ flex: 1 }}>
-            <strong>Job Seeker / Candidate Mode Active</strong>
-            <p>
-              As an employee or job seeker, <strong>no ID verification is required</strong>! You have full access to explore community opportunities, view verified job openings, and apply directly via recruiters' Google Forms.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-            <Link to="/jobs" className="btn-browse-jobs">
-              Browse Approved Jobs ↗
-            </Link>
-            <button className="btn-secondary" style={{ fontSize: "12px" }} onClick={() => { setVerifyRole("employer"); setShowVerifyModal(true); }}>
-              Are you an Employer? Verify to Post Jobs
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* PENDING EMPLOYER VERIFICATION */}
-      {verification.role === "employer" && (verification.status === "pending" || verification.status === "unverified") && (
-        <div className="verification-pending-banner">
-          <FaClock className="status-icon" />
-          <div style={{ flex: 1 }}>
-            <strong>Employer Official ID Verification {verification.status === "pending" ? "Pending Administrator Review" : "Required"}</strong>
-            <p>
-              {verification.status === "pending"
-                ? `Your official organization verification for ${verification.company_name || "your company"} has been submitted and is currently being audited by our verification team.`
-                : "To post open jobs on CommunityHub, please verify your organization with official company documentation (Business License, Incorporation Certificate, or Tax ID)."}
-            </p>
-          </div>
-          {verification.status !== "pending" && (
-            <button className="btn-verify-now" onClick={() => { setVerifyRole("employer"); setShowVerifyModal(true); }}>
-              Verify Employer ID
-            </button>
+      {/* ORGANIZATION VERIFICATION GATE BANNERS */}
+      {!isVerifiedEmployer && (
+        <div style={{ marginBottom: "20px" }}>
+          {verification.status === "pending" ? (
+            <div className="verification-pending-banner">
+              <FaClock className="status-icon" />
+              <div style={{ flex: 1 }}>
+                <strong>Organization Verification Pending Administrator Review</strong>
+                <p>
+                  Your organization verification for <strong>{verification.company_name || "your organization"}</strong> is under review by our administration team.
+                  Once verified and approved, you will be able to post and manage recruitment openings.
+                </p>
+              </div>
+            </div>
+          ) : verification.status === "rejected" ? (
+            <div
+              className="verification-pending-banner"
+              style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" }}
+            >
+              <FaTimesCircle className="status-icon" style={{ color: "#ef4444" }} />
+              <div style={{ flex: 1 }}>
+                <strong>Organization Verification Rejected</strong>
+                <p>
+                  {verification.rejection_reason || "Your verification documents were not approved."} Please update your organization details or submit a valid business document.
+                </p>
+              </div>
+              <button
+                className="btn-verify-now"
+                style={{ background: "#ef4444" }}
+                onClick={() => navigate("/dashboard?tab=verification")}
+              >
+                Update Verification
+              </button>
+            </div>
+          ) : (
+            <div
+              className="verification-pending-banner"
+              style={{ background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" }}
+            >
+              <FaShieldAlt className="status-icon" style={{ color: "#16a34a" }} />
+              <div style={{ flex: 1 }}>
+                <strong>Organization Verification Required to Post Jobs</strong>
+                <p>
+                  To ensure quality and community safety, only verified employers and registered organizations can publish jobs.
+                  Please complete the quick Organization Verification with your company registration document.
+                </p>
+              </div>
+              <button
+                className="btn-verify-now"
+                style={{ background: "#0f766e" }}
+                onClick={() => navigate("/dashboard?tab=verification")}
+              >
+                Verify Organization
+              </button>
+            </div>
           )}
         </div>
       )}

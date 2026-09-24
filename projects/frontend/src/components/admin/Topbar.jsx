@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import supabase from "../../config/supabaseClient";
+import { clearAuthSession } from "../../services/authService";
 
 const Topbar = ({ activePage = "dashboard" }) => {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -15,10 +18,18 @@ const Topbar = ({ activePage = "dashboard" }) => {
     }
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    clearAuthSession();
+    navigate("/admin-login");
+  };
+
   const getTitle = () => {
     switch (activePage) {
       case "verifications":
-        return "ID & Identity Verifications";
+        return "Organization Verifications & Employer Gating";
       case "users":
         return "Users & Role-Based Access Control (RBAC)";
       case "jobs":
@@ -59,6 +70,10 @@ const Topbar = ({ activePage = "dashboard" }) => {
             </div>
           </div>
         )}
+
+        <button className="adminLogoutBtn" onClick={handleLogout} title="Log out of Admin Portal">
+          Logout ⎋
+        </button>
       </div>
 
       <style>{`
@@ -154,6 +169,21 @@ const Topbar = ({ activePage = "dashboard" }) => {
           font-weight: 800;
           color: #0f766e;
           letter-spacing: 0.5px;
+        }
+        .adminLogoutBtn {
+          background: #fee2e2;
+          color: #b91c1c;
+          border: 1px solid #fecaca;
+          padding: 6px 12px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .adminLogoutBtn:hover {
+          background: #fca5a5;
+          color: #991b1b;
         }
       `}</style>
     </div>
