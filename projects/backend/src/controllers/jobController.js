@@ -11,64 +11,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Fallback in-memory store for applications if Supabase table is not yet provisioned
-const memoryApplications = [];
-
-// Sample jobs fallback if DB has no jobs yet
-const SAMPLE_APPROVED_JOBS = [
-  {
-    id: "sample-1",
-    job_title: "Full Stack Web Developer",
-    company_name: "Tech Solutions Inc.",
-    job_description: "We are seeking a Full Stack Developer experienced with React, Node.js, and PostgreSQL to build community applications.",
-    job_type: "Full Time",
-    location: "Houston, TX (Hybrid)",
-    salary: "$85,000 - $110,000",
-    experience: "Mid-Level (2-4 yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: "sample-2",
-    job_title: "Community Outreach Coordinator",
-    company_name: "Austin Civic Network",
-    job_description: "Lead local non-profit engagement, volunteer coordination, and regional workshop communications.",
-    job_type: "Part Time",
-    location: "Austin, TX",
-    salary: "$25 - $32 / hr",
-    experience: "Junior (1-2 yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
-  },
-  {
-    id: "sample-3",
-    job_title: "Manual & Automation QA Engineer",
-    company_name: "Apex Quality Labs",
-    job_description: "Perform regression, integration, and UI testing across web and mobile cloud services.",
-    job_type: "Full Time",
-    location: "Dallas, TX (Remote)",
-    salary: "$75,000 - $95,000",
-    experience: "Mid-Level (3+ yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 6).toISOString(),
-  },
-  {
-    id: "sample-4",
-    job_title: "Digital Marketing & SEO Specialist",
-    company_name: "Organic Reach Media",
-    job_description: "Drive search engine optimization, content strategy, and community brand awareness campaigns.",
-    job_type: "Contract",
-    location: "San Antonio, TX",
-    salary: "$40 - $55 / hr",
-    experience: "Senior (5+ yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-];
+import { insertRecord, readStore, updateRecord } from "../db/localStore.js";
 
 /**
  * GET /api/jobs
- * Public job directory - returns ONLY approved jobs
+ * Public job directory - returns ONLY approved jobs from database
  */
 export const getPublicJobs = async (req, res) => {
   try {
@@ -86,7 +33,7 @@ export const getPublicJobs = async (req, res) => {
 
     const { data, error } = await query;
 
-    let jobsList = (!error && data && data.length > 0) ? data : SAMPLE_APPROVED_JOBS;
+    let jobsList = (!error && Array.isArray(data)) ? data : [];
 
     if (q && q.trim()) {
       const term = q.trim().toLowerCase();
@@ -106,7 +53,7 @@ export const getPublicJobs = async (req, res) => {
 
     return res.json({ jobs: jobsList });
   } catch (err) {
-    return res.status(500).json({ message: err.message, jobs: SAMPLE_APPROVED_JOBS });
+    return res.status(500).json({ message: err.message, jobs: [] });
   }
 };
 
@@ -205,15 +152,13 @@ export const applyToJob = async (req, res) => {
       }
     }
 
-    // In-memory fallback if sample job or table not yet provisioned
-    if (!savedInDb) {
-      const fallbackApp = {
-        ...applicationRecord,
-        id: `app_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      };
-      memoryApplications.unshift(fallbackApp);
-      createdApp = fallbackApp;
-    }
+    // Persist to localStore as well
+    const fallbackApp = {
+      ...applicationRecord,
+      id: createdApp?.id || `app_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    };
+    insertRecord("job_applications.json", createdApp || fallbackApp);
+    if (!createdApp) createdApp = fallbackApp;
 
     return res.status(201).json({
       message: "Application submitted successfully! The hiring manager has received your submission.",
@@ -247,7 +192,7 @@ export const getJobApplicants = async (req, res) => {
     }
 
     const isAdmin = ["admin", "superadmin"].includes((user.role || "").toLowerCase());
-    const isOwner = jobData ? jobData.user_id === user.id : true; // allow if sample or matches
+    const isOwner = jobData ? jobData.user_id === user.id : true; // allow if matches
 
     if (!isAdmin && !isOwner) {
       return res.status(403).json({ message: "You are not authorized to view applicants for this job" });
@@ -271,12 +216,12 @@ export const getJobApplicants = async (req, res) => {
       }
     }
 
-    // Merge with any in-memory applications for this job
-    const memoryMatches = memoryApplications.filter((a) => a.job_id === jobId);
+    // Merge with localStore applications for this job
+    const localMatches = readStore("job_applications.json").filter((a) => a.job_id === jobId);
     const existingIds = new Set(applicants.map((a) => a.id));
-    for (const mem of memoryMatches) {
-      if (!existingIds.has(mem.id)) {
-        applicants.push(mem);
+    for (const loc of localMatches) {
+      if (!existingIds.has(loc.id)) {
+        applicants.push(loc);
       }
     }
 
@@ -324,9 +269,12 @@ export const getMyJobApplicantCounts = async (req, res) => {
       }
     }
 
-    // 3. Add memory counts
-    for (const mem of memoryApplications) {
-      counts[mem.job_id] = (counts[mem.job_id] || 0) + 1;
+    // 3. Add localStore counts
+    const localApps = readStore("job_applications.json");
+    for (const loc of localApps) {
+      if (jobIds.includes(loc.job_id) || !isUuid(loc.job_id)) {
+        counts[loc.job_id] = (counts[loc.job_id] || 0) + 1;
+      }
     }
 
     return res.json({ counts });
@@ -349,6 +297,7 @@ export const updateApplicationStatus = async (req, res) => {
       return res.status(400).json({ message: `Status must be one of: ${validStatuses.join(", ")}` });
     }
 
+    let updated = null;
     // Try Supabase update
     try {
       const { data, error } = await supabase
@@ -359,19 +308,18 @@ export const updateApplicationStatus = async (req, res) => {
         .single();
 
       if (!error && data) {
-        return res.json({ message: "Application status updated", application: data });
+        updated = data;
       }
     } catch {
-      // Fallback to memory
+      // Fallback
     }
 
-    const memApp = memoryApplications.find((a) => a.id === appId);
-    if (memApp) {
-      memApp.status = status.toLowerCase();
-      return res.json({ message: "Application status updated", application: memApp });
-    }
+    updateRecord("job_applications.json", (a) => a.id === appId, {
+      status: status.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    });
 
-    return res.json({ message: "Application status updated", status });
+    return res.json({ message: "Application status updated", application: updated || { id: appId, status: status.toLowerCase() } });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -433,6 +381,90 @@ export const uploadResume = async (req, res) => {
     const localUrl = `${protocol}://${host}/uploads/resumes/${localFileName}`;
 
     return res.json({ url: localUrl, path: `/uploads/resumes/${localFileName}` });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * GET /api/jobs/applications/:id/resume/download
+ * Direct attachment download for applicant resumes
+ */
+export const downloadApplicantResume = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let appRecord = null;
+
+    // 1. Check localStore
+    const localApps = readStore("job_applications.json");
+    appRecord = localApps.find((a) => String(a.id) === String(id));
+
+    // 2. Check Supabase
+    if (!appRecord) {
+      try {
+        const { data } = await supabase
+          .from("job_applications")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (data) appRecord = data;
+      } catch {}
+    }
+
+    if (!appRecord || !appRecord.resume_url) {
+      return res.status(404).json({ message: "Resume document not found for this applicant." });
+    }
+
+    const resumeUrl = appRecord.resume_url;
+    const applicantName = (appRecord.applicant_name || "Applicant").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const downloadFilename = `${applicantName}_Resume.pdf`;
+
+    // Local static file
+    if (resumeUrl.startsWith("/uploads/")) {
+      const localFilePath = path.resolve(__dirname, "../../", resumeUrl.replace(/^\//, ""));
+      if (fs.existsSync(localFilePath)) {
+        res.setHeader("Content-Disposition", `attachment; filename="${downloadFilename}"`);
+        res.setHeader("Content-Type", "application/pdf");
+        return res.sendFile(localFilePath);
+      }
+    }
+
+    // Direct filesystem path
+    if (!resumeUrl.startsWith("http") && fs.existsSync(resumeUrl)) {
+      res.setHeader("Content-Disposition", `attachment; filename="${downloadFilename}"`);
+      res.setHeader("Content-Type", "application/pdf");
+      return res.sendFile(resumeUrl);
+    }
+
+    // Remote HTTP/HTTPS URL (e.g. Supabase storage or server URL)
+    if (resumeUrl.startsWith("http")) {
+      // If it points to localhost:5000/uploads/...
+      if (resumeUrl.includes("/uploads/resumes/")) {
+        const urlObj = new URL(resumeUrl);
+        const localFilePath = path.resolve(__dirname, "../../", urlObj.pathname.replace(/^\//, ""));
+        if (fs.existsSync(localFilePath)) {
+          res.setHeader("Content-Disposition", `attachment; filename="${downloadFilename}"`);
+          res.setHeader("Content-Type", "application/pdf");
+          return res.sendFile(localFilePath);
+        }
+      }
+
+      try {
+        const fileRes = await fetch(resumeUrl);
+        if (fileRes.ok) {
+          const contentType = fileRes.headers.get("content-type") || "application/pdf";
+          res.setHeader("Content-Disposition", `attachment; filename="${downloadFilename}"`);
+          res.setHeader("Content-Type", contentType);
+          const arrayBuffer = await fileRes.arrayBuffer();
+          return res.send(Buffer.from(arrayBuffer));
+        }
+      } catch (fErr) {
+        console.warn("Remote resume fetch notice:", fErr.message);
+      }
+      return res.redirect(resumeUrl);
+    }
+
+    return res.status(404).json({ message: "Resume file not found on server." });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }

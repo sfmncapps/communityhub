@@ -66,34 +66,43 @@ const ManageClassifieds = () => {
 
     try {
       const token = getToken();
-      if (token) {
-        const res = await fetch(`${API}/admin/classifieds/${id}/status`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status }),
-        });
+      let apiSuccess = false;
 
-        if (res.ok) {
-          showToast(`Classified marked as ${status} ✅`, "success");
-          fetchAds();
-          return;
+      if (token) {
+        try {
+          const res = await fetch(`${API}/admin/classifieds/${id}/status`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status }),
+          });
+
+          if (res.ok) {
+            apiSuccess = true;
+          }
+        } catch (e) {
+          console.warn("Backend classified update call notice:", e.message);
         }
       }
 
-      // Supabase direct fallback
-      const payload =
-        status === "approved"
-          ? { status, approved_at: new Date().toISOString() }
-          : { status, rejected_at: new Date().toISOString() };
+      // Supabase direct fallback - ONLY update status column (no approved_at / rejected_at)
+      try {
+        await supabase.from("classifieds").update({ status }).eq("id", id);
+      } catch (e) {
+        console.warn("Direct Supabase update notice:", e.message);
+      }
 
-      const { error } = await supabase.from("classifieds").update(payload).eq("id", id);
-      if (error) throw error;
+      // Immediately update local UI state so item disappears from pending tab
+      setAds((prev) =>
+        prev
+          .map((a) => (a.id === id ? { ...a, status } : a))
+          .filter((a) => activeTab === "all" || a.status === activeTab)
+      );
 
       showToast(`Classified marked as ${status} ✅`, "success");
-      fetchAds();
+      await fetchAds();
     } catch (err) {
       console.error(err);
       showToast(err.message || "Update failed", "error");

@@ -6,6 +6,7 @@ import {
   getMyJobApplicantCounts,
   updateApplicationStatus,
   uploadResume,
+  downloadApplicantResume,
 } from "../controllers/jobController.js";
 import { requireUser, optionalUser } from "../middleware/requireUser.js";
 
@@ -16,6 +17,9 @@ router.get("/", getPublicJobs);
 
 // Upload resume file
 router.post("/upload-resume", uploadResume);
+
+// Download applicant resume (direct file download)
+router.get("/applications/:id/resume/download", downloadApplicantResume);
 
 // Apply to a job (native application with resume)
 router.post("/:id/apply", optionalUser, applyToJob);

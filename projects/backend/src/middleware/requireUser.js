@@ -22,15 +22,27 @@ export const requireUser = async (req, res, next) => {
     // Try our own JWT first (cheap, local, no network call).
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const { data: user, error } = await supabase
-        .from("users_active")
-        .select("*")
-        .eq("id", decoded.userId)
-        .maybeSingle();
+      const targetId = decoded.userId || decoded.id;
+      if (targetId) {
+        const { data: user, error } = await supabase
+          .from("users_active")
+          .select("*")
+          .eq("id", targetId)
+          .maybeSingle();
 
-      if (!error && user) {
-        req.activeUser = user;
-        return next();
+        if (!error && user) {
+          req.activeUser = user;
+          return next();
+        } else if (decoded.role) {
+          req.activeUser = {
+            id: targetId,
+            role: decoded.role,
+            email: decoded.email,
+            phone: decoded.phone,
+            name: decoded.name || decoded.username,
+          };
+          return next();
+        }
       }
     } catch {
       // Not our JWT (or expired/invalid) — fall through to Supabase check.
@@ -72,15 +84,27 @@ export const optionalUser = async (req, res, next) => {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const { data: user, error } = await supabase
-        .from("users_active")
-        .select("*")
-        .eq("id", decoded.userId)
-        .maybeSingle();
+      const targetId = decoded.userId || decoded.id;
+      if (targetId) {
+        const { data: user, error } = await supabase
+          .from("users_active")
+          .select("*")
+          .eq("id", targetId)
+          .maybeSingle();
 
-      if (!error && user) {
-        req.activeUser = user;
-        return next();
+        if (!error && user) {
+          req.activeUser = user;
+          return next();
+        } else if (decoded.role) {
+          req.activeUser = {
+            id: targetId,
+            role: decoded.role,
+            email: decoded.email,
+            phone: decoded.phone,
+            name: decoded.name || decoded.username,
+          };
+          return next();
+        }
       }
     } catch {
       // Ignore

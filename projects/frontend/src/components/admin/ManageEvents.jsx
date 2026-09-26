@@ -10,6 +10,7 @@ import {
   FaClock,
   FaMapMarkerAlt,
   FaUserAlt,
+  FaUsers,
 } from "react-icons/fa";
 import supabase from "../../config/supabaseClient";
 
@@ -22,12 +23,53 @@ const ManageEvents = () => {
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState({ msg: "", type: "info" });
 
+  // Attendees modal state
+  const [attendeesModalOpen, setAttendeesModalOpen] = useState(false);
+  const [activeEventAttendees, setActiveEventAttendees] = useState(null);
+  const [attendeesList, setAttendeesList] = useState([]);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
+
   const showToast = (msg, type = "info") => {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: "", type: "info" }), 3500);
   };
 
   const getToken = () => localStorage.getItem("token");
+
+  const fetchAttendees = async (eventObj) => {
+    setActiveEventAttendees(eventObj);
+    setAttendeesModalOpen(true);
+    setLoadingAttendees(true);
+    try {
+      const token = getToken();
+      if (token) {
+        const res = await fetch(`${API}/events/${eventObj.id}/registrations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAttendeesList(data.registrations || []);
+          return;
+        }
+      }
+
+      // Supabase direct fallback
+      const { data, error } = await supabase
+        .from("event_registrations")
+        .select("*")
+        .eq("event_id", eventObj.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setAttendeesList(data);
+      }
+    } catch (err) {
+      console.error("Fetch attendees error:", err);
+      showToast("Failed to fetch attendees", "error");
+    } finally {
+      setLoadingAttendees(false);
+    }
+  };
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -326,6 +368,15 @@ const ManageEvents = () => {
                 )}
 
                 <button
+                  className="btn-action attendees"
+                  onClick={() => fetchAttendees(item)}
+                  title="View Registered Attendees"
+                  style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}
+                >
+                  <FaUsers /> Attendees
+                </button>
+
+                <button
                   className="btn-action delete"
                   onClick={() => handleDeleteEvent(item.id)}
                   title="Permanently Delete"
@@ -335,6 +386,126 @@ const ManageEvents = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ATTENDEES MODAL */}
+      {attendeesModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => setAttendeesModalOpen(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: 16,
+              maxWidth: 580,
+              width: "100%",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "18px 24px",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#f8fafc",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Event Registrations</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+                  {activeEventAttendees?.title} • {attendeesList.length} Registered
+                </p>
+              </div>
+              <button
+                style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#64748b" }}
+                onClick={() => setAttendeesModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: 20, overflowY: "auto", flex: 1 }}>
+              {loadingAttendees ? (
+                <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Loading registered attendees...</div>
+              ) : attendeesList.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                  No attendees have registered for this event yet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {attendeesList.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        padding: 14,
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#fafafa",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 15 }}>
+                          {item.attendee_name}
+                        </div>
+                        <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+                          ✉ {item.attendee_email} • 📞 {item.attendee_phone}
+                        </div>
+                        {item.notes && (
+                          <div style={{ fontSize: 12, color: "#475569", marginTop: 4, fontStyle: "italic" }}>
+                            Note: "{item.notes}"
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span
+                          style={{
+                            background: "#dcfce7",
+                            color: "#166534",
+                            padding: "4px 10px",
+                            borderRadius: 20,
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {item.number_of_guests || 1} {item.number_of_guests === 1 ? "Guest" : "Guests"}
+                        </span>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                          {item.created_at ? new Date(item.created_at).toLocaleDateString() : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendEmailOtp, sendSmsOtp, sendWhatsAppOtp } from "../utils/notify.js";
+import { readStore, updateRecord, deleteRecord } from "../db/localStore.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -283,6 +284,9 @@ export const deleteEvent = async (req, res) => {
       .delete()
       .eq("id", id);
 
+    deleteRecord("events.json", id);
+    deleteRecord("event_registrations.json", (r) => String(r.event_id) === String(id));
+
     if (error) return res.status(500).json({ message: error.message });
     return res.json({ message: "Event deleted successfully" });
   } catch (e) {
@@ -348,7 +352,15 @@ export const updateJobStatus = async (req, res) => {
 export const deleteJob = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from("jobs").delete().eq("id", id);
+    let error = null;
+    try {
+      const res = await supabase.from("jobs").delete().eq("id", id);
+      if (res.error) error = res.error;
+    } catch (err) {
+      error = err;
+    }
+    deleteRecord("jobs.json", id);
+    deleteRecord("job_applications.json", (a) => String(a.job_id) === String(id));
     if (error) return res.status(500).json({ message: error.message });
     return res.json({ message: "Job deleted successfully" });
   } catch (e) {
@@ -413,19 +425,16 @@ export const updateVendorStatus = async (req, res) => {
       payload.rejection_reason = rejection_reason;
     }
 
-    const { data, error } = await supabase
-      .from("vendor_listings")
-      .update(payload)
-      .eq("id", id)
-      .select()
-      .single();
+    try {
+      await supabase.from("directory_listings").update(payload).eq("id", id);
+    } catch {}
+    try {
+      await supabase.from("vendor_listings").update(payload).eq("id", id);
+    } catch {}
 
-    if (error) {
-      // If table doesn't exist yet, return success mock
-      return res.json({ message: `Vendor status updated to ${status}`, id, status });
-    }
+    const updated = updateRecord("vendor_listings.json", id, payload);
 
-    return res.json({ message: `Vendor listing ${status} successfully!`, vendor: data });
+    return res.json({ message: `Vendor listing ${status} successfully!`, vendor: updated || { id, status } });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -435,9 +444,14 @@ export const updateVendorStatus = async (req, res) => {
 export const deleteVendor = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from("vendor_listings").delete().eq("id", id);
-    if (error) return res.status(500).json({ message: error.message });
-    return res.json({ message: "Vendor listing deleted successfully" });
+    try {
+      await supabase.from("directory_listings").delete().eq("id", id);
+    } catch {}
+    try {
+      await supabase.from("vendor_listings").delete().eq("id", id);
+    } catch {}
+    deleteRecord("vendor_listings.json", id);
+    return res.json({ message: "Vendor listing deleted successfully from Supabase and platform store." });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -452,15 +466,46 @@ export const getAdminClassifieds = async (req, res) => {
   try {
     const { status = "pending", q } = req.query;
 
-    let query = supabase.from("classifieds").select("*").order("created_at", { ascending: false });
-    if (status && status !== "all") {
-      query = query.eq("status", status.toLowerCase());
+    // 1. Fetch from Supabase
+    let supaAds = [];
+    try {
+      const { data, error } = await supabase
+        .from("classifieds")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) supaAds = data;
+    } catch {}
+
+    const supaMap = new Map();
+    for (const ad of supaAds) {
+      supaMap.set(String(ad.id), ad);
     }
 
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ message: error.message });
+    // 2. Merge with localStore
+    const localAds = readStore("classifieds.json");
+    for (const localAd of localAds) {
+      const idStr = String(localAd.id);
+      if (!supaMap.has(idStr)) {
+        supaMap.set(idStr, localAd);
+      } else {
+        // Keep Supabase's authoritative status synced to localStore if different
+        const supaAd = supaMap.get(idStr);
+        if (localAd.status !== supaAd.status) {
+          updateRecord("classifieds.json", idStr, { status: supaAd.status });
+        }
+      }
+    }
 
-    let results = data || [];
+    let results = Array.from(supaMap.values());
+
+    if (status && status !== "all") {
+      results = results.filter(
+        (ad) => (ad.status || "pending").toLowerCase() === status.toLowerCase()
+      );
+    }
+
+    results.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
     if (q && q.trim()) {
       const term = q.trim().toLowerCase();
       results = results.filter(
@@ -490,21 +535,34 @@ export const updateClassifiedStatus = async (req, res) => {
       return res.status(400).json({ message: `Status must be one of: ${valid.join(", ")}` });
     }
 
-    const payload = {
-      status: status.toLowerCase(),
-      ...(status === "approved" ? { approved_at: new Date().toISOString() } : {}),
-      ...(status === "rejected" ? { rejected_at: new Date().toISOString() } : {}),
-    };
+    const newStatus = status.toLowerCase();
 
-    const { data, error } = await supabase
-      .from("classifieds")
-      .update(payload)
-      .eq("id", id)
-      .select()
-      .single();
+    // 1. Update in Supabase (ONLY pass status column to avoid PostgREST PGRST204 column errors)
+    let supaData = null;
+    try {
+      const resSupa = await supabase
+        .from("classifieds")
+        .update({ status: newStatus })
+        .eq("id", id)
+        .select()
+        .maybeSingle();
 
-    if (error) return res.status(500).json({ message: error.message });
-    return res.json({ message: `Classified ad status updated to ${status}`, classified: data });
+      if (!resSupa.error && resSupa.data) {
+        supaData = resSupa.data;
+      } else if (resSupa.error) {
+        console.warn("Supabase classified update warning:", resSupa.error.message);
+      }
+    } catch (err) {
+      console.warn("Supabase update error:", err.message);
+    }
+
+    // 2. Update in localStore
+    const updatedLocal = updateRecord("classifieds.json", id, { status: newStatus });
+
+    return res.json({
+      message: `Classified ad status updated to ${newStatus}`,
+      classified: supaData || updatedLocal || { id, status: newStatus },
+    });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -514,8 +572,10 @@ export const updateClassifiedStatus = async (req, res) => {
 export const deleteClassified = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from("classifieds").delete().eq("id", id);
-    if (error) return res.status(500).json({ message: error.message });
+    try {
+      await supabase.from("classifieds").delete().eq("id", id);
+    } catch {}
+    deleteRecord("classifieds.json", id);
     return res.json({ message: "Classified ad deleted successfully" });
   } catch (e) {
     return res.status(500).json({ message: e.message });

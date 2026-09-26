@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
   FaStore,
   FaPhoneAlt,
@@ -33,6 +33,7 @@ const VENDOR_CATEGORIES = [
 ];
 
 const Directory = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialLetter = searchParams.get("letter") || "All";
   const initialSearch = searchParams.get("search") || searchParams.get("q") || "";
@@ -206,6 +207,18 @@ const Directory = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleOpenListShop = () => {
+    const token = localStorage.getItem("token");
+    const userStr = localStorage.getItem("user");
+    if (!token && !userStr) {
+      navigate(`/login?redirect=${encodeURIComponent("/directory?list=shop")}`);
+      return;
+    }
+    setShopError("");
+    setShopSuccess(false);
+    setShopModalOpen(true);
+  };
+
   // Submit Shop / Vendor Details
   const handleShopSubmit = async (e) => {
     e.preventDefault();
@@ -242,13 +255,29 @@ const Directory = () => {
         }
       }
 
-      const { data: sess } = await supabase.auth.getSession();
-      const userId = sess?.session?.user?.id;
+      let userId = null;
+      try {
+        const u = JSON.parse(localStorage.getItem("user") || "{}");
+        userId = u.id || null;
+      } catch {}
+
+      if (!userId) {
+        const { data: sess } = await supabase.auth.getSession();
+        userId = sess?.session?.user?.id || null;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!userId && !token) {
+        setShopError("Authentication required. Please log in first.");
+        setSubmittingShop(false);
+        navigate(`/login?redirect=${encodeURIComponent("/directory?list=shop")}`);
+        return;
+      }
 
       // If storage did not produce URL and preview exists, send preview to backend upload
       const payload = {
         ...shopForm,
-        user_id: userId || null,
+        user_id: userId,
         store_image_url: finalImageUrl || shopImagePreview || null,
         status: "pending", // Mandated: requires Admin approval before public visibility
       };
@@ -257,9 +286,7 @@ const Directory = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(localStorage.getItem("token")
-            ? { Authorization: `Bearer ${localStorage.getItem("token")}` }
-            : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -303,7 +330,7 @@ const Directory = () => {
           </p>
 
           <div className="hero-actions-row">
-            <button className="btn-list-shop" onClick={() => { setShopError(""); setShopSuccess(false); setShopModalOpen(true); }}>
+            <button className="btn-list-shop" onClick={handleOpenListShop}>
               <FaPlus /> List Your Shop / Business
             </button>
             <div className="search-box">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FaCalendarAlt,
   FaClock,
@@ -22,6 +22,7 @@ const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 export default function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -54,6 +55,17 @@ export default function EventDetails() {
       }
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("rsvp") === "true") {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate(`/login?redirect=${encodeURIComponent(`/events/${id}?rsvp=true`)}`);
+      } else {
+        setShowRsvpModal(true);
+      }
+    }
+  }, [searchParams, id]);
 
   useEffect(() => {
     fetchEventDetails();
@@ -149,6 +161,15 @@ export default function EventDetails() {
     `${event.venue_name}, ${event.address || ""}, ${event.city}, ${event.state}`
   )}`;
 
+  const handleOpenRsvpModal = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate(`/login?redirect=${encodeURIComponent(`/events/${id}?rsvp=true`)}`);
+      return;
+    }
+    setShowRsvpModal(true);
+  };
+
   const handleRsvpSubmit = async (e) => {
     e.preventDefault();
     setRsvpError("");
@@ -168,18 +189,8 @@ export default function EventDetails() {
       });
 
       if (!res.ok) {
-        // Fallback directly to Supabase client
-        const { error: supaErr } = await supabase.from("event_registrations").insert([
-          {
-            event_id: id,
-            attendee_name: rsvpForm.attendee_name,
-            attendee_email: rsvpForm.attendee_email,
-            attendee_phone: rsvpForm.attendee_phone,
-            number_of_guests: Number(rsvpForm.number_of_guests) || 1,
-            notes: rsvpForm.notes || null,
-          },
-        ]);
-        if (supaErr) throw new Error(supaErr.message || "Registration failed");
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || "Registration failed");
       }
 
       setRsvpSuccess(true);
@@ -387,7 +398,7 @@ export default function EventDetails() {
             ) : (
               <button
                 className="btn-rsvp-primary"
-                onClick={() => setShowRsvpModal(true)}
+                onClick={handleOpenRsvpModal}
               >
                 <FaTicketAlt /> Register for Event / RSVP
               </button>

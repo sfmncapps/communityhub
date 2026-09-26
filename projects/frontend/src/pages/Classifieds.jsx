@@ -39,19 +39,35 @@ const Classifieds = () => {
 
   const fetchApprovedAds = async () => {
     setLoading(true);
+    let loaded = false;
     try {
-      // Direct query for approved ads, without restrictive expires_at filter
-      const { data, error } = await supabase
-        .from("classifieds")
-        .select("*")
-        .eq("status", "approved")
-        .order("created_at", { ascending: false });
+      // 1. Try public backend endpoint
+      try {
+        const res = await fetch(`${API}/classifieds`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.classifieds) {
+            setAds(data.classifieds);
+            loaded = true;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("API classifieds fetch notice:", apiErr.message);
+      }
 
-      if (error) throw error;
-      setAds(data || []);
+      // 2. Direct Supabase fallback
+      if (!loaded) {
+        const { data, error } = await supabase
+          .from("classifieds")
+          .select("*")
+          .eq("status", "approved")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setAds(data || []);
+      }
     } catch (err) {
       console.error("Fetch classifieds error:", err);
-      // Fallback: empty array
       setAds([]);
     } finally {
       setLoading(false);

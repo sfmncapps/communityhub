@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { loginUser, setAuthSession } from "../../services/authService";
 import supabase from "../../config/supabaseClient";
 
@@ -26,7 +26,8 @@ const LoginForm = () => {
   const [waIdentifier, setWaIdentifier] = useState("");
   const [waOtp, setWaOtp] = useState("");
 
-  const API = import.meta.env.VITE_API_BASE_URL || "https://communityhub.sunflowerwebtek.com/api";
+  const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+  const oauthCheckingRef = useRef(false);
 
   /* OAuth session check — runs after Google/Apple redirect back to /login.
      A live Supabase session only means "we know who they are", not that
@@ -37,8 +38,10 @@ const LoginForm = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN") return;
       const accessToken = session?.access_token;
-      if (!accessToken) return;
+      if (!accessToken || oauthCheckingRef.current) return;
+      oauthCheckingRef.current = true;
 
       try {
         const res = await fetch(`${API}/auth/oauth-check`, {
@@ -50,6 +53,7 @@ const LoginForm = () => {
         if (!res.ok) {
           alert("Sign-in check failed: " + (data.message || "Unknown error"));
           await supabase.auth.signOut();
+          oauthCheckingRef.current = false;
           return;
         }
 
@@ -59,11 +63,13 @@ const LoginForm = () => {
         } else {
           alert("Account created. Waiting for admin approval before you can log in.");
           await supabase.auth.signOut();
+          oauthCheckingRef.current = false;
         }
       } catch (err) {
         console.error("oauth-check failed:", err);
         alert("Sign-in check failed. Please try again.");
         await supabase.auth.signOut();
+        oauthCheckingRef.current = false;
       }
     });
 

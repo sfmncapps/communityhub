@@ -21,9 +21,9 @@ router.post("/upload-doc", requireUser, uploadVerificationDoc);
 // Dedicated Organization Verification
 router.post("/organization", requireUser, submitOrganizationVerification);
 router.get("/organization/status", requireUser, getMyOrganizationVerification);
-router.get("/organization/pending", requireUser, requireRole(["admin", "superadmin"]), getPendingOrganizationVerifications);
-router.post("/organization/:id/review", requireUser, requireRole(["admin", "superadmin"]), reviewOrganizationVerification);
-router.put("/organization/:id/review", requireUser, requireRole(["admin", "superadmin"]), reviewOrganizationVerification);
+router.get("/organization/pending", requireUser, requireRole(["admin", "superadmin", "manager"]), getPendingOrganizationVerifications);
+router.post("/organization/:id/review", requireUser, requireRole(["admin", "superadmin", "manager"]), reviewOrganizationVerification);
+router.put("/organization/:id/review", requireUser, requireRole(["admin", "superadmin", "manager"]), reviewOrganizationVerification);
 
 // Legacy aliases
 router.post("/upload", requireUser, submitVerification);

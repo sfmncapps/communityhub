@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import supabase from "../config/supabaseClient";
 
-const API = import.meta.env.VITE_API_BASE_URL || "https://communityhub.sunflowerwebtek.com/api";
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 // Works for both login types: our own JWT (email/phone/whatsapp/password)
 // or a live Supabase session (Google/Apple).

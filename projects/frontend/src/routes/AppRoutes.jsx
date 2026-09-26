@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -31,14 +31,20 @@ import MyEvents from "../pages/MyEvents";
 import MyJobs from "../pages/MyJobs";
 import { ThemeProvider } from "../context/ThemeContext";
 
-const AppRoutes = () => {
-  return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <ScrollToTop />
-        <Header />
+const AppRoutesContent = () => {
+  const location = useLocation();
+  const isAdminOrManager =
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/") ||
+    location.pathname === "/manager" ||
+    location.pathname.startsWith("/manager/");
 
-        <Routes>
+  return (
+    <>
+      <ScrollToTop />
+      {!isAdminOrManager && <Header />}
+
+      <Routes>
         {/* Public Pages */}
         <Route path="/" element={<Home />} />
         <Route path="/welcome" element={<Welcome />} />
@@ -82,9 +88,18 @@ const AppRoutes = () => {
         <Route path="/:collectiveSlug/:subPage" element={<CollectiveProfile />} />
       </Routes>
 
-      <Footer />
-    </ThemeProvider>
-  </BrowserRouter>
+      {!isAdminOrManager && <Footer />}
+    </>
+  );
+};
+
+const AppRoutes = () => {
+  return (
+    <BrowserRouter>
+      <ThemeProvider>
+        <AppRoutesContent />
+      </ThemeProvider>
+    </BrowserRouter>
   );
 };
 

@@ -25,69 +25,6 @@ import supabase from "../config/supabaseClient";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-const DEFAULT_SAMPLE_JOBS = [
-  {
-    id: "sample-1",
-    job_title: "Full Stack Web Developer",
-    company_name: "Tech Solutions Inc.",
-    job_description: "We are seeking a versatile Full Stack Developer experienced with React, Node.js, and PostgreSQL to build modern community-first web applications.\n\nKey Responsibilities:\n• Develop responsive and accessible user interfaces using React and modern CSS.\n• Build robust RESTful APIs in Node.js/Express.\n• Collaborate with UI/UX designers and community organizers to iterate on high-impact features.",
-    job_type: "Full Time",
-    location: "Houston, TX (Hybrid)",
-    salary: "$85,000 - $110,000",
-    experience: "Mid-Level (2-4 yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: "sample-2",
-    job_title: "Community Outreach Coordinator",
-    company_name: "Austin Civic Network",
-    job_description: "Lead local non-profit engagement, volunteer coordination, and regional workshop communications across Central Texas.\n\nKey Responsibilities:\n• Foster strong relationships with local small business owners and community leaders.\n• Plan, promote, and execute bi-weekly community gatherings.\n• Manage communication channels and newsletter outreach.",
-    job_type: "Part Time",
-    location: "Austin, TX (On-site)",
-    salary: "$25 - $32 / hr",
-    experience: "Junior (1-2 yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
-  },
-  {
-    id: "sample-3",
-    job_title: "Manual & Automation QA Engineer",
-    company_name: "Apex Quality Labs",
-    job_description: "Perform end-to-end regression, integration, and UI testing across web and mobile services to ensure high reliability.\n\nKey Responsibilities:\n• Formulate comprehensive test plans, test cases, and quality acceptance criteria.\n• Identify, document, and track software bugs through resolution.\n• Write automated integration tests for cloud APIs.",
-    job_type: "Full Time",
-    location: "Dallas, TX (Remote)",
-    salary: "$75,000 - $95,000",
-    experience: "Mid-Level (3+ yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 6).toISOString(),
-  },
-  {
-    id: "sample-4",
-    job_title: "Digital Marketing & SEO Specialist",
-    company_name: "Organic Reach Media",
-    job_description: "Drive search engine optimization, content strategy, and community brand awareness across regional digital platforms.\n\nKey Responsibilities:\n• Execute on-page and technical SEO audits.\n• Manage organic content campaigns for local community directories.\n• Analyze web performance metrics and deliver weekly optimization reports.",
-    job_type: "Contract",
-    location: "San Antonio, TX",
-    salary: "$40 - $55 / hr",
-    experience: "Senior (5+ yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-  {
-    id: "sample-5",
-    job_title: "Senior Java & Cloud Architect",
-    company_name: "Cloud Enterprises Corp",
-    job_description: "Architect scalable backend services using Spring Boot, PostgreSQL, Docker, and AWS for high-concurrency systems.\n\nKey Responsibilities:\n• Design distributed microservices and database schemas.\n• Optimize query performance and implement caching strategies.\n• Mentor engineering teams on best design patterns and code quality.",
-    job_type: "Full Time",
-    location: "Dallas, TX (Hybrid)",
-    salary: "$125,000 - $150,000",
-    experience: "Senior (6+ yrs)",
-    status: "approved",
-    created_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-  },
-];
-
 const JOB_TYPES = ["All", "Full Time", "Part Time", "Contract", "Remote", "Internship"];
 const EXPERIENCE_LEVELS = ["All", "Entry-Level", "Junior", "Mid-Level", "Senior"];
 
@@ -158,12 +95,11 @@ export default function Jobs() {
       const res = await fetch(`${API}/jobs`);
       if (res.ok) {
         const data = await res.json();
-        if (data.jobs && data.jobs.length > 0) {
-          setJobs(data.jobs);
-          setSelectedJob(data.jobs[0]);
-          setLoading(false);
-          return;
-        }
+        const list = Array.isArray(data.jobs) ? data.jobs : [];
+        setJobs(list);
+        setSelectedJob(list[0] || null);
+        setLoading(false);
+        return;
       }
 
       // 2. Direct Supabase Query fallback (ONLY approved jobs)
@@ -173,17 +109,17 @@ export default function Jobs() {
         .eq("status", "approved")
         .order("created_at", { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         setJobs(data);
-        setSelectedJob(data[0]);
+        setSelectedJob(data[0] || null);
       } else {
-        setJobs(DEFAULT_SAMPLE_JOBS);
-        setSelectedJob(DEFAULT_SAMPLE_JOBS[0]);
+        setJobs([]);
+        setSelectedJob(null);
       }
     } catch (err) {
-      console.warn("Using sample approved jobs:", err.message);
-      setJobs(DEFAULT_SAMPLE_JOBS);
-      setSelectedJob(DEFAULT_SAMPLE_JOBS[0]);
+      console.warn("Fetch jobs error:", err.message);
+      setJobs([]);
+      setSelectedJob(null);
     } finally {
       setLoading(false);
     }
@@ -191,10 +127,25 @@ export default function Jobs() {
 
   useEffect(() => {
     fetchJobs();
+
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        setUser(u);
+        setApplicantForm((prev) => ({
+          ...prev,
+          name: u.name || u.username || prev.name,
+          email: u.email || prev.email,
+          phone: u.phone || prev.phone,
+        }));
+      }
+    } catch {}
+
     supabase.auth.getUser().then(({ data }) => {
       const authUser = data?.user;
-      setUser(authUser || null);
       if (authUser) {
+        setUser((prev) => prev || authUser);
         setApplicantForm((prev) => ({
           ...prev,
           name: authUser.user_metadata?.full_name || authUser.name || prev.name,
@@ -250,10 +201,10 @@ export default function Jobs() {
       if (!selectedJob || !filteredJobs.some((j) => j.id === selectedJob.id)) {
         setSelectedJob(filteredJobs[0]);
       }
-    } else {
+    } else if (selectedJob !== null) {
       setSelectedJob(null);
     }
-  }, [filteredJobs]);
+  }, [filteredJobs, selectedJob]);
 
   // File upload handler
   const handleFileChange = (e) => {
@@ -281,6 +232,12 @@ export default function Jobs() {
   };
 
   const openApplyModal = (job) => {
+    const token = localStorage.getItem("token");
+    const storedUser = localStorage.getItem("user");
+    if (!token && !storedUser) {
+      navigate(`/login?redirect=${encodeURIComponent("/jobs")}`);
+      return;
+    }
     if (job) setSelectedJob(job);
     setApplyError("");
     setApplySuccess(false);

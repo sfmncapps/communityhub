@@ -94,7 +94,7 @@ const Sidebar = ({ activePage, setActivePage, onLogout }) => {
         {isManager && (
           <li
             className="manager-portal-link"
-            onClick={() => navigate("/admin")}
+            onClick={() => navigate("/manager")}
             style={{
               background: "linear-gradient(135deg, #0284c7, #0369a1)",
               color: "#ffffff",

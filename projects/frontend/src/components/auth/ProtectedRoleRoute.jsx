@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import supabase from "../../config/supabaseClient";
-import { setAuthSession, clearAuthSession } from "../../services/authService";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -22,6 +21,7 @@ const getAuthToken = async () => {
 export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }) {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const rolesKey = Array.isArray(allowedRoles) ? allowedRoles.join(",") : "";
 
   useEffect(() => {
     let mounted = true;
@@ -30,7 +30,6 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
       // 1. Mandatory token check - NEVER authorize on cached user string alone
       const token = await getAuthToken();
       if (!token) {
-        clearAuthSession();
         if (mounted) {
           setAuthorized(false);
           setLoading(false);
@@ -47,7 +46,9 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
         if (res.ok) {
           const data = await res.json();
           if (data?.user) {
-            setAuthSession(token, data.user);
+            try {
+              localStorage.setItem("user", JSON.stringify(data.user));
+            } catch {}
             const role = (data.user.role || "user").toLowerCase();
             const allowed = isRoleAllowed(role, allowedRoles, strict);
             if (mounted) {
@@ -77,7 +78,6 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
         } catch {}
       }
 
-      clearAuthSession();
       if (mounted) {
         setAuthorized(false);
         setLoading(false);
@@ -89,7 +89,7 @@ export default function ProtectedRoleRoute({ allowedRoles = [], strict = false }
     return () => {
       mounted = false;
     };
-  }, [allowedRoles, strict]);
+  }, [rolesKey, strict]);
 
   if (loading) {
     return (

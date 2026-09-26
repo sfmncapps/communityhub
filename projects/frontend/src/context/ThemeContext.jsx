@@ -6,11 +6,12 @@ const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 const DEFAULT_MENU = [
   { id: "home", label: "Home", path: "/", is_visible: true, sort_order: 1 },
-  { id: "events", label: "Events", path: "/events", is_visible: true, sort_order: 2 },
-  { id: "directory", label: "Directory", path: "/directory", is_visible: true, sort_order: 3 },
-  { id: "community", label: "Community", path: "/community", is_visible: true, sort_order: 4 },
-  { id: "jobs", label: "Jobs", path: "/jobs", is_visible: true, sort_order: 5 },
-  { id: "classifieds", label: "Classifieds", path: "/classifieds", is_visible: true, sort_order: 6 },
+  { id: "about", label: "About Us", path: "/about", is_visible: true, sort_order: 2 },
+  { id: "events", label: "Events", path: "/events", is_visible: true, sort_order: 3 },
+  { id: "directory", label: "Directory", path: "/directory", is_visible: true, sort_order: 4 },
+  { id: "community", label: "Community", path: "/community", is_visible: true, sort_order: 5 },
+  { id: "jobs", label: "Jobs", path: "/jobs", is_visible: true, sort_order: 6 },
+  { id: "classifieds", label: "Classifieds", path: "/classifieds", is_visible: true, sort_order: 7 },
 ];
 
 const DEFAULT_WIDGETS = [
@@ -82,7 +83,11 @@ export function ThemeProvider({ children }) {
           applyThemeToDocument(activeTheme);
 
           if (Array.isArray(s.header_menu) && s.header_menu.length > 0) {
-            setHeaderMenu([...s.header_menu].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
+            let menu = [...s.header_menu];
+            if (!menu.some((m) => m.id === "about" || m.path === "/about")) {
+              menu.splice(1, 0, { id: "about", label: "About Us", path: "/about", is_visible: true, sort_order: 2 });
+            }
+            setHeaderMenu(menu.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
           }
 
           if (Array.isArray(s.homepage_widgets) && s.homepage_widgets.length > 0) {

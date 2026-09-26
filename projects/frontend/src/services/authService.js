@@ -1,6 +1,6 @@
 import supabase from "../config/supabaseClient";
 
-const API = import.meta.env.VITE_API_BASE_URL || "https://communityhub.sunflowerwebtek.com/api";
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 /* ================= SESSION MANAGEMENT ================= */
 export const setAuthSession = (token, user) => {

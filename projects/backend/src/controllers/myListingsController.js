@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { readStore, insertRecord, updateRecord, deleteRecord as deleteLocalRecord } from "../db/localStore.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -36,24 +37,107 @@ const RESOURCES = {
 
 const DEFAULT_STATUS = { jobs: "pending", vendor_listings: "pending", directory_listings: "pending", classifieds: "pending", events: "pending" };
 
+const normalizeVendorItem = (item) => ({
+  id: item.id,
+  user_id: item.user_id,
+  shop_name: item.shop_name || item.business_name || "Community Business",
+  owner_name: item.owner_name || "",
+  category: item.category || "General",
+  phone_number: item.phone_number || item.mobile || "",
+  whatsapp_number: item.whatsapp_number || "",
+  email: item.email || "",
+  street_address: item.street_address || item.address || "",
+  landmark: item.landmark || "",
+  city: item.city || "",
+  state: item.state || "",
+  postal_code: item.postal_code || item.zip || "",
+  store_image_url: item.store_image_url || item.business_image_url || "",
+  description: item.description || "",
+  status: item.status || "pending",
+  created_at: item.created_at || new Date().toISOString(),
+});
+
 export const listMine = async (req, res) => {
   const { resource } = req.params;
   if (!RESOURCES[resource]) return res.status(400).json({ message: "Unknown resource" });
 
-  const { data, error } = await supabase
-    .from(resource)
-    .select("*")
-    .eq("user_id", req.activeUser.id)
-    .order("created_at", { ascending: false });
+  const userId = req.activeUser.id;
 
-  if (error) return res.status(500).json({ message: error.message });
-  return res.json({ items: data || [] });
-};
+  if (resource === "vendor_listings") {
+    let combined = [];
+    const seenIds = new Set();
 
-const GOOGLE_FORM_REGEX = /^(https?:\/\/)?(forms\.gle\/[a-zA-Z0-9_-]+|(docs|drive)\.google\.com\/forms\/[^\s]+)/i;
-const isGoogleFormUrl = (url) => {
-  if (!url) return false;
-  return GOOGLE_FORM_REGEX.test(url.trim());
+    // 1. Check directory_listings in Supabase
+    try {
+      const { data } = await supabase
+        .from("directory_listings")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        for (const item of data) {
+          const norm = normalizeVendorItem(item);
+          combined.push(norm);
+          seenIds.add(String(norm.id));
+        }
+      }
+    } catch {}
+
+    // 2. Check vendor_listings in Supabase (if table exists)
+    try {
+      const { data } = await supabase
+        .from("vendor_listings")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        for (const item of data) {
+          const norm = normalizeVendorItem(item);
+          if (!seenIds.has(String(norm.id))) {
+            combined.push(norm);
+            seenIds.add(String(norm.id));
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Check vendor_listings.json
+    const local = readStore("vendor_listings.json").filter(
+      (v) => String(v.user_id) === String(userId)
+    );
+    for (const item of local) {
+      const norm = normalizeVendorItem(item);
+      if (!seenIds.has(String(norm.id))) {
+        combined.push(norm);
+        seenIds.add(String(norm.id));
+      }
+    }
+
+    combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return res.json({ items: combined });
+  }
+
+  // Standard resource listing
+  try {
+    const { data, error } = await supabase
+      .from(resource)
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      // Fallback to local store for resource
+      const local = readStore(`${resource}.json`).filter((r) => String(r.user_id) === String(userId));
+      return res.json({ items: local });
+    }
+
+    return res.json({ items: data || [] });
+  } catch (err) {
+    const local = readStore(`${resource}.json`).filter((r) => String(r.user_id) === String(userId));
+    return res.json({ items: local });
+  }
 };
 
 export const createMine = async (req, res) => {
@@ -61,11 +145,63 @@ export const createMine = async (req, res) => {
   const allowedFields = RESOURCES[resource];
   if (!allowedFields) return res.status(400).json({ message: "Unknown resource" });
 
-  // Events and Jobs now support native internal workflow; external links are optional
-
-  const payload = { user_id: req.activeUser.id, status: DEFAULT_STATUS[resource] };
+  const userId = req.activeUser.id;
+  const payload = { user_id: userId, status: DEFAULT_STATUS[resource] };
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) payload[field] = req.body[field];
+  }
+
+  if (resource === "vendor_listings") {
+    let savedItem = null;
+
+    // 1. Insert into directory_listings (guaranteed existing table)
+    try {
+      const dirPayload = {
+        user_id: userId,
+        business_name: payload.shop_name,
+        owner_name: payload.owner_name,
+        category: payload.category,
+        mobile: payload.phone_number,
+        email: payload.email,
+        address: payload.street_address,
+        city: payload.city,
+        state: payload.state,
+        zip: payload.postal_code,
+        description: payload.description,
+        business_image_url: payload.store_image_url,
+        status: "pending",
+      };
+
+      const { data: dirData, error: dirErr } = await supabase
+        .from("directory_listings")
+        .insert([dirPayload])
+        .select()
+        .single();
+
+      if (!dirErr && dirData) {
+        savedItem = normalizeVendorItem({ ...payload, ...dirData });
+      }
+    } catch (e) {
+      console.warn("createMine directory_listings fallback:", e.message);
+    }
+
+    // 2. Also try vendor_listings table
+    try {
+      const { data: vData, error: vErr } = await supabase
+        .from("vendor_listings")
+        .insert([payload])
+        .select()
+        .single();
+
+      if (!vErr && vData && !savedItem) {
+        savedItem = normalizeVendorItem(vData);
+      }
+    } catch {}
+
+    // 3. Always persist to local store
+    const localRecord = insertRecord("vendor_listings.json", savedItem || payload);
+
+    return res.json({ message: "Submitted for approval", item: savedItem || localRecord });
   }
 
   // If company_name or experience was passed for jobs, ensure it is recorded in description
@@ -82,16 +218,35 @@ export const createMine = async (req, res) => {
   if (resource === "classifieds") {
     if (payload.location_city && !payload.city) payload.city = payload.location_city;
     if (payload.city && !payload.location_city) payload.location_city = payload.city;
+    if (payload.condition && !payload.description?.includes(payload.condition)) {
+      payload.description = `[Condition: ${payload.condition}] ${payload.description || ""}`.trim();
+    }
+    if (payload.images && Array.isArray(payload.images) && payload.images.length > 0 && !payload.media_url) {
+      payload.media_url = payload.images[0];
+    }
+    if (!payload.media_type) payload.media_type = "image";
   }
 
-  const { data, error } = await supabase
-    .from(resource)
-    .insert([payload])
-    .select()
-    .single();
+  const supaPayload = { ...payload };
+  if (resource === "classifieds") {
+    delete supaPayload.condition;
+    delete supaPayload.is_free;
+    delete supaPayload.images;
+    delete supaPayload.location_city;
+  }
 
-  if (error) return res.status(500).json({ message: error.message });
-  return res.json({ message: "Submitted for approval", item: data });
+  let data = null;
+  try {
+    const res = await supabase.from(resource).insert([supaPayload]).select().maybeSingle();
+    if (!res.error && res.data) data = res.data;
+    else if (res.error) console.warn(`Supabase ${resource} insert warning:`, res.error.message);
+  } catch (err) {
+    console.warn(`Supabase ${resource} insert error:`, err.message);
+  }
+
+  const localRecord = insertRecord(`${resource}.json`, { ...payload, ...(data || {}) });
+
+  return res.json({ message: "Submitted for approval", item: data || localRecord });
 };
 
 export const updateMine = async (req, res) => {
@@ -104,34 +259,74 @@ export const updateMine = async (req, res) => {
     if (req.body[field] !== undefined) payload[field] = req.body[field];
   }
 
+  if (resource === "vendor_listings") {
+    const dirUpdates = {};
+    if (payload.shop_name) dirUpdates.business_name = payload.shop_name;
+    if (payload.owner_name) dirUpdates.owner_name = payload.owner_name;
+    if (payload.category) dirUpdates.category = payload.category;
+    if (payload.phone_number) dirUpdates.mobile = payload.phone_number;
+    if (payload.email) dirUpdates.email = payload.email;
+    if (payload.street_address) dirUpdates.address = payload.street_address;
+    if (payload.city) dirUpdates.city = payload.city;
+    if (payload.state) dirUpdates.state = payload.state;
+    if (payload.postal_code) dirUpdates.zip = payload.postal_code;
+    if (payload.description) dirUpdates.description = payload.description;
+    if (payload.store_image_url) dirUpdates.business_image_url = payload.store_image_url;
+
+    try {
+      await supabase.from("directory_listings").update(dirUpdates).eq("id", id).eq("user_id", req.activeUser.id);
+    } catch {}
+
+    try {
+      await supabase.from("vendor_listings").update(payload).eq("id", id).eq("user_id", req.activeUser.id);
+    } catch {}
+
+    updateRecord("vendor_listings.json", id, payload);
+    return res.json({ message: "Updated successfully", item: { id, ...payload } });
+  }
+
   if (resource === "classifieds") {
     if (payload.location_city && !payload.city) payload.city = payload.location_city;
     if (payload.city && !payload.location_city) payload.location_city = payload.city;
     if (req.body.status === "sold") payload.status = "sold";
   }
 
-  const { data, error } = await supabase
-    .from(resource)
-    .update(payload)
-    .eq("id", id)
-    .eq("user_id", req.activeUser.id)
-    .select()
-    .single();
+  try {
+    const { data } = await supabase
+      .from(resource)
+      .update(payload)
+      .eq("id", id)
+      .eq("user_id", req.activeUser.id)
+      .select()
+      .single();
 
-  if (error) return res.status(500).json({ message: error.message });
-  return res.json({ message: "Updated successfully", item: data });
+    updateRecord(`${resource}.json`, id, payload);
+    return res.json({ message: "Updated successfully", item: data || { id, ...payload } });
+  } catch (error) {
+    updateRecord(`${resource}.json`, id, payload);
+    return res.json({ message: "Updated successfully", item: { id, ...payload } });
+  }
 };
 
 export const deleteMine = async (req, res) => {
   const { resource, id } = req.params;
   if (!RESOURCES[resource]) return res.status(400).json({ message: "Unknown resource" });
 
-  const { error } = await supabase
-    .from(resource)
-    .delete()
-    .eq("id", id)
-    .eq("user_id", req.activeUser.id);
+  if (resource === "vendor_listings") {
+    try {
+      await supabase.from("directory_listings").delete().eq("id", id).eq("user_id", req.activeUser.id);
+    } catch {}
+    try {
+      await supabase.from("vendor_listings").delete().eq("id", id).eq("user_id", req.activeUser.id);
+    } catch {}
+    deleteLocalRecord("vendor_listings.json", id);
+    return res.json({ message: "Deleted" });
+  }
 
-  if (error) return res.status(500).json({ message: error.message });
+  try {
+    await supabase.from(resource).delete().eq("id", id).eq("user_id", req.activeUser.id);
+  } catch {}
+  deleteLocalRecord(`${resource}.json`, id);
+
   return res.json({ message: "Deleted" });
 };

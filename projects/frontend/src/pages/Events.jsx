@@ -359,26 +359,20 @@ export default function Events() {
 
                   <div className="ev-card-footer">
                     <Link to={`/events/${ev.id}`} className="btn-view-details">
-                      Details →
+                      Details
                     </Link>
 
-                    {ev.registration_link && !ev.is_concluded ? (
-                      <a
-                        href={
-                          ev.registration_link.startsWith("http")
-                            ? ev.registration_link
-                            : `https://${ev.registration_link}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-google-form-rsvp"
-                        title="Register via Google Form"
+                    {!ev.is_concluded ? (
+                      <Link
+                        to={`/events/${ev.id}?rsvp=true`}
+                        className="btn-register-rsvp"
+                        title="Register / RSVP"
                       >
-                        Register (Google Form) ↗
-                      </a>
-                    ) : ev.is_concluded ? (
+                        Register / RSVP →
+                      </Link>
+                    ) : (
                       <span className="ev-concluded-chip">Concluded</span>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               </div>
@@ -879,24 +873,54 @@ export default function Events() {
         }
         .ev-card-footer {
           margin-top: auto;
+          display: flex;
+          gap: 8px;
+          align-items: center;
         }
         .btn-view-details {
-          display: block;
+          flex: 1;
           text-align: center;
           background: #f8fafc;
           border: 1px solid #cbd5e1;
           color: #0f766e;
-          padding: 10px;
-          border-radius: 10px;
-          font-weight: 800;
+          padding: 9px 10px;
+          border-radius: 9px;
+          font-weight: 700;
           font-size: 13px;
           text-decoration: none;
           transition: all .15s;
         }
         .btn-view-details:hover {
+          background: #e2e8f0;
+          color: #0f766e;
+        }
+        .btn-register-rsvp {
+          flex: 1.3;
+          text-align: center;
           background: #0f766e;
+          border: 1px solid #0f766e;
           color: white;
-          border-color: #0f766e;
+          padding: 9px 10px;
+          border-radius: 9px;
+          font-weight: 700;
+          font-size: 13px;
+          text-decoration: none;
+          transition: all .15s;
+        }
+        .btn-register-rsvp:hover {
+          background: #115e59;
+          border-color: #115e59;
+        }
+        .ev-concluded-chip {
+          flex: 1;
+          text-align: center;
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          padding: 9px 10px;
+          border-radius: 9px;
+          font-size: 12px;
+          font-weight: 600;
         }
 
         @media (max-width: 768px) {

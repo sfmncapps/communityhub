@@ -12,57 +12,83 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+import { insertRecord, readStore, updateRecord } from "../db/localStore.js";
+
 // ============================================================
 // DEDICATED ORGANIZATION / EMPLOYER VERIFICATION
 // ============================================================
 
 /**
- * POST /api/verification/organization
- * User submits Organization Verification (Company Name, Document, Storefront/Office Photo)
+ * POST /api/verification/organization and /api/verification/upload
+ * User submits Organization/Employer Verification
  */
 export const submitOrganizationVerification = async (req, res) => {
   try {
-    const { company_name, registration_number, document_url, photo_url } = req.body;
+    const rawCompanyName = req.body.company_name || req.body.business_name || req.activeUser?.company_name || req.activeUser?.name;
+    const docUrl = req.body.document_url || req.body.redacted_id_url || req.body.id_document_url || req.body.file_url;
+    const photoUrl = req.body.photo_url || req.body.storefront_photo_url || req.body.logo_url || null;
+    const regNum = req.body.registration_number || req.body.id_type || null;
 
-    if (!company_name || !company_name.trim()) {
-      return res.status(400).json({ message: "Company / Organization name is required" });
+    if (!rawCompanyName || !rawCompanyName.trim()) {
+      return res.status(400).json({ message: "Company or Organization name is required" });
     }
-    if (!document_url || !document_url.trim()) {
+    if (!docUrl || !docUrl.trim()) {
       return res.status(400).json({ message: "Official registration or verification document is required" });
     }
 
     const payload = {
+      id: `verif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       user_id: req.activeUser.id,
-      company_name: company_name.trim(),
-      registration_number: registration_number ? registration_number.trim() : null,
-      document_url: document_url.trim(),
-      photo_url: photo_url ? photo_url.trim() : null,
+      company_name: rawCompanyName.trim(),
+      registration_number: regNum ? regNum.trim() : null,
+      document_url: docUrl.trim(),
+      redacted_id_url: docUrl.trim(),
+      photo_url: photoUrl ? photoUrl.trim() : null,
       status: "pending",
       rejection_reason: null,
+      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
     let savedRecord = null;
+    // 1. Try Supabase
     try {
       const { data, error } = await supabase
         .from("organization_verifications")
-        .insert([payload])
+        .insert([{
+          user_id: payload.user_id,
+          company_name: payload.company_name,
+          registration_number: payload.registration_number,
+          document_url: payload.document_url,
+          photo_url: payload.photo_url,
+          status: payload.status,
+          updated_at: payload.updated_at,
+        }])
         .select()
         .single();
       if (!error && data) savedRecord = data;
     } catch (err) {
-      console.warn("organization_verifications insert fallback:", err.message);
+      console.warn("organization_verifications Supabase insert warning:", err.message);
     }
 
-    // Keep users_active in sync
-    await supabase
-      .from("users_active")
-      .update({
-        company_name: company_name.trim(),
-        verification_status: "pending",
-        verification_notes: null,
-      })
-      .eq("id", req.activeUser.id);
+    // 2. Persist to localStore
+    const localSaved = insertRecord("organization_verifications.json", savedRecord || payload);
+    if (!savedRecord) savedRecord = localSaved;
+
+    // 3. Keep users_active in sync
+    try {
+      await supabase
+        .from("users_active")
+        .update({
+          company_name: payload.company_name,
+          verification_status: "pending",
+          redacted_id_url: payload.document_url,
+          verification_notes: null,
+        })
+        .eq("id", req.activeUser.id);
+    } catch (err) {
+      console.warn("users_active sync warning:", err.message);
+    }
 
     return res.status(201).json({
       message: "Organization verification submitted for administrator review. Once approved, you can publish job openings.",
@@ -90,6 +116,13 @@ export const getMyOrganizationVerification = async (req, res) => {
         .maybeSingle();
       if (!error && data) orgRecord = data;
     } catch {}
+
+    if (!orgRecord) {
+      const localRecords = readStore("organization_verifications.json");
+      orgRecord = localRecords
+        .filter((r) => r.user_id === req.activeUser.id)
+        .sort((a, b) => new Date(b.created_at || b.updated_at) - new Date(a.created_at || a.updated_at))[0] || null;
+    }
 
     if (orgRecord) {
       return res.json({ verification: orgRecord });
@@ -122,42 +155,68 @@ export const getPendingOrganizationVerifications = async (req, res) => {
   try {
     const { status = "pending" } = req.query;
 
-    let verifications = [];
+    // Fetch active users for metadata and verified state check
+    let usersMap = new Map();
     try {
-      let query = supabase
-        .from("organization_verifications")
-        .select("*, user:user_id(id, name, email, phone, role)")
-        .order("created_at", { ascending: false });
-
-      if (status && status !== "all") {
-        query = query.eq("status", status.toLowerCase());
-      }
-
-      const { data, error } = await query;
-      if (!error && data) verifications = data;
-    } catch {}
-
-    // Fallback to users_active if organization_verifications table not yet queried
-    if (verifications.length === 0) {
       const { data: usersData } = await supabase
         .from("users_active")
-        .select("id, username, name, email, phone, role, company_name, verification_status, redacted_id_url, created_at")
-        .eq("verification_status", "pending")
-        .order("created_at", { ascending: false });
+        .select("id, username, name, email, phone, role, company_name, verification_status, redacted_id_url, created_at");
+      if (usersData) {
+        for (const u of usersData) {
+          usersMap.set(String(u.id), u);
+        }
+      }
+    } catch {}
 
-      verifications = (usersData || []).map((u) => ({
-        id: u.id,
-        user_id: u.id,
-        company_name: u.company_name || u.name,
-        document_url: u.redacted_id_url,
-        photo_url: null,
-        status: "pending",
-        created_at: u.created_at,
-        user: u,
-      }));
+    const localRecords = readStore("organization_verifications.json");
+    // Sort local records newest first
+    localRecords.sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
+
+    // Deduplicate by user_id so each organization has one canonical entry
+    const dedupedByUser = new Map();
+    for (const rec of localRecords) {
+      const uid = String(rec.user_id || rec.id);
+      if (!dedupedByUser.has(uid)) {
+        const u = usersMap.get(uid);
+        // If users_active is verified, align local status if needed
+        let effStatus = rec.status || "pending";
+        if (u?.verification_status === "verified" && effStatus !== "rejected") {
+          effStatus = "approved";
+        }
+        dedupedByUser.set(uid, {
+          ...rec,
+          status: effStatus,
+          user: u || { id: uid, name: rec.company_name, email: rec.email },
+        });
+      }
     }
 
-    return res.json({ verifications });
+    // Also include any users with pending verification_status from users_active not in localStore
+    for (const [uid, u] of usersMap.entries()) {
+      if (!dedupedByUser.has(uid) && u.verification_status && u.verification_status !== "unverified") {
+        dedupedByUser.set(uid, {
+          id: u.id,
+          user_id: u.id,
+          company_name: u.company_name || u.name || "Organization",
+          registration_number: null,
+          document_url: u.redacted_id_url,
+          photo_url: null,
+          status: u.verification_status === "verified" ? "approved" : u.verification_status,
+          created_at: u.created_at,
+          user: u,
+        });
+      }
+    }
+
+    let results = Array.from(dedupedByUser.values());
+
+    if (status && status !== "all") {
+      results = results.filter((r) => (r.status || "").toLowerCase() === status.toLowerCase());
+    }
+
+    results.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    return res.json({ verifications: results });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -179,44 +238,53 @@ export const reviewOrganizationVerification = async (req, res) => {
     let targetUserId = null;
     let companyName = "";
 
-    try {
-      const { data: record } = await supabase
-        .from("organization_verifications")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
-
-      if (record) {
-        targetUserId = record.user_id;
-        companyName = record.company_name;
-
-        await supabase
-          .from("organization_verifications")
-          .update({
-            status,
-            rejection_reason: status === "rejected" ? (rejection_reason || "Verification requirements not met") : null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id);
-      }
-    } catch {}
-
+    const localRecords = readStore("organization_verifications.json");
+    const matched = localRecords.find((r) => r.id === id || r.user_id === id);
+    if (matched) {
+      targetUserId = matched.user_id;
+      companyName = matched.company_name;
+    }
     if (!targetUserId) targetUserId = id;
 
-    // Update user record: approve unlocks job posting and sets role to employer
+    // 1. Update ALL records in localStore for this user or id
+    updateRecord(
+      "organization_verifications.json",
+      (r) => r.id === id || (targetUserId && String(r.user_id) === String(targetUserId)),
+      {
+        status,
+        rejection_reason: status === "rejected" ? (rejection_reason || "Verification requirements not met") : null,
+        updated_at: new Date().toISOString(),
+      }
+    );
+
+    // 2. Update users_active in Supabase
+    // NOTE: users_active_role_check only allows 'user', 'admin', 'superadmin', 'manager'.
+    // Do NOT set role to 'employer' as that violates database check constraint.
+    // verification_status 'verified' grants job posting privileges directly.
     const userUpdates = {
       verification_status: status === "approved" ? "verified" : "rejected",
-      verification_notes: status === "rejected" ? rejection_reason : "Organization verified",
+      verification_notes: status === "rejected" ? (rejection_reason || "Verification requirements not met") : "Organization verified",
       verified_at: status === "approved" ? new Date().toISOString() : null,
     };
-    if (status === "approved") {
-      userUpdates.role = "employer";
+
+    try {
+      await supabase.from("users_active").update(userUpdates).eq("id", targetUserId);
+    } catch (err) {
+      console.warn("users_active update warning:", err.message);
     }
 
-    await supabase.from("users_active").update(userUpdates).eq("id", targetUserId);
+    // 3. Sync with Supabase id_verifications table if present
+    try {
+      await supabase.from("id_verifications").update({
+        status,
+        reviewed_at: new Date().toISOString(),
+      }).eq("user_id", targetUserId);
+    } catch {}
 
     return res.json({
       message: `Organization verification ${status} successfully.`,
+      status,
+      user_id: targetUserId,
     });
   } catch (e) {
     return res.status(500).json({ message: e.message });

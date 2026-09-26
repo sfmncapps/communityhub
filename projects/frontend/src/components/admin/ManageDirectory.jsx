@@ -62,7 +62,7 @@ const ManageDirectory = () => {
       // Supabase direct fallback
       const { data, error } = await supabase
         .from("collectives")
-        .select("*, owner:owner_id(id, name, email)")
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;

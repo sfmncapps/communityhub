@@ -40,10 +40,7 @@ export const getCollectives = async (req, res) => {
     const { q, letter } = req.query;
     let query = supabase
       .from("collectives")
-      .select(`
-        *,
-        owner:owner_id(id, name, email, company_name)
-      `)
+      .select("*")
       .eq("status", "approved")
       .order("name", { ascending: true });
 
@@ -79,10 +76,7 @@ export const getPendingCollectives = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("collectives")
-      .select(`
-        *,
-        owner:owner_id(id, name, email)
-      `)
+      .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
@@ -100,29 +94,40 @@ export const getCollectiveBySlug = async (req, res) => {
 
     const { data: collective, error } = await supabase
       .from("collectives")
-      .select(`
-        *,
-        owner:owner_id(id, name, email, phone, company_name, category)
-      `)
+      .select("*")
       .eq("slug", slug)
       .maybeSingle();
 
     if (error) return res.status(500).json({ message: error.message });
     if (!collective) return res.status(404).json({ message: "Collective not found" });
 
-    // Fetch members
-    const { data: members } = await supabase
-      .from("collective_members")
-      .select(`
-        id, role, joined_at,
-        user:user_id(id, name, email, company_name, category)
-      `)
-      .eq("collective_id", collective.id);
+    let ownerInfo = null;
+    if (collective.owner_id) {
+      try {
+        const { data: u } = await supabase
+          .from("users_active")
+          .select("id, name, email, phone, company_name, category")
+          .eq("id", collective.owner_id)
+          .maybeSingle();
+        if (u) ownerInfo = u;
+      } catch {}
+    }
+
+    // Fetch members if table exists
+    let members = [];
+    try {
+      const { data: mData } = await supabase
+        .from("collective_members")
+        .select("*")
+        .eq("collective_id", collective.id);
+      if (mData) members = mData;
+    } catch {}
 
     return res.json({
       collective: {
         ...collective,
-        members: members || [],
+        owner: ownerInfo,
+        members,
       },
     });
   } catch (e) {

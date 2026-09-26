@@ -20,6 +20,7 @@ import eventRoutes from "./src/routes/eventRoutes.js";
 import settingsRoutes from "./src/routes/settingsRoutes.js";
 import jobRoutes from "./src/routes/jobRoutes.js";
 import vendorRoutes from "./src/routes/vendorRoutes.js";
+import { getAdminClassifieds } from "./src/controllers/adminController.js";
 import { authLimiter, apiLimiter } from "./src/middleware/rateLimiter.js";
 
 const app = express();
@@ -68,7 +69,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Database connection instance for live health check
 const supabase = createClient(
@@ -105,6 +107,7 @@ app.use("/uploads", express.static(uploadsDir));
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin", apiLimiter, adminRoutes);
 app.use("/api/my", apiLimiter, myListingsRoutes);
+app.use("/api/my-listings", apiLimiter, myListingsRoutes);
 app.use("/api/collectives", apiLimiter, collectiveRoutes);
 app.use("/api/verification", apiLimiter, verificationRoutes);
 app.use("/api/messages", apiLimiter, messageRoutes);
@@ -112,6 +115,12 @@ app.use("/api/events", apiLimiter, eventRoutes);
 app.use("/api/settings", apiLimiter, settingsRoutes);
 app.use("/api/jobs", apiLimiter, jobRoutes);
 app.use("/api/vendors", apiLimiter, vendorRoutes);
+
+// Public Classifieds Route
+app.get("/api/classifieds", (req, res, next) => {
+  req.query.status = req.query.status || "approved";
+  return getAdminClassifieds(req, res, next);
+});
 
 const PORT = process.env.PORT || 5000;
 

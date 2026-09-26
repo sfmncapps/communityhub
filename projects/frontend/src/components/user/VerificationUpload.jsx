@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import supabase from "../../config/supabaseClient";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -268,11 +269,31 @@ export default function VerificationUpload() {
       {/* STATUS NOTICES */}
       {isApproved && (
         <div className="org-alert-banner success">
-          <strong>✓ Organization Verified & Job Posting Unlocked</strong>
-          <p>
-            Your organization <strong>{companyName}</strong> has been reviewed and approved by administrators.
-            You have full permissions to post and manage recruitment openings in the <strong>My Jobs</strong> portal.
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <strong>✓ Organization Verified & Job Posting Unlocked</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                Your organization <strong>{companyName}</strong> has been reviewed and approved by administrators.
+                You have full permissions to post and manage recruitment openings in the <strong>My Jobs</strong> portal.
+              </p>
+            </div>
+            <Link
+              to="/dashboard?tab=my-jobs"
+              style={{
+                background: "#0f766e",
+                color: "#ffffff",
+                padding: "10px 18px",
+                borderRadius: "8px",
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: "14px",
+                display: "inline-block",
+                boxShadow: "0 4px 12px rgba(15, 118, 110, 0.2)",
+              }}
+            >
+              Post a Job Now →
+            </Link>
+          </div>
         </div>
       )}
 

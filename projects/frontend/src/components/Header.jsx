@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { FaBars, FaTimes, FaShieldAlt, FaUsersCog } from "react-icons/fa";
 import supabase from "../config/supabaseClient";
 import { useTheme } from "../context/ThemeContext";
-import { clearAuthSession, setAuthSession } from "../services/authService";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
@@ -27,7 +26,6 @@ const Header = () => {
     const token = await getAuthToken();
     if (!token) {
       setProfile(null);
-      clearAuthSession();
       setChecking(false);
       return;
     }
@@ -53,9 +51,10 @@ const Header = () => {
       const data = await res.json();
       if (res.ok && data.user) {
         setProfile(data.user);
-        setAuthSession(token, data.user);
+        try {
+          localStorage.setItem("user", JSON.stringify(data.user));
+        } catch {}
       } else {
-        clearAuthSession();
         setProfile(null);
       }
     } catch {
@@ -72,10 +71,9 @@ const Header = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        clearAuthSession();
         setProfile(null);
         setChecking(false);
-      } else {
+      } else if (event === "SIGNED_IN") {
         loadProfile();
       }
     });

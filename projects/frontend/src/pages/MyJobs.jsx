@@ -305,6 +305,50 @@ export default function MyJobs() {
     }
   };
 
+  const handleDownloadResume = async (candidate) => {
+    if (!candidate.resume_url && !candidate.id) {
+      alert("No resume document attached to this application.");
+      return;
+    }
+
+    const applicantName = (candidate.applicant_name || "Applicant").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const downloadFilename = `${applicantName}_Resume.pdf`;
+
+    // 1. Direct download endpoint via backend (handles Content-Disposition: attachment)
+    if (candidate.id) {
+      const downloadEndpoint = `${API}/jobs/applications/${candidate.id}/resume/download`;
+      const link = document.createElement("a");
+      link.href = downloadEndpoint;
+      link.setAttribute("download", downloadFilename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // 2. Direct fallback URL resolution
+    const rawUrl = candidate.resume_url;
+    const fullUrl = rawUrl.startsWith("http")
+      ? rawUrl
+      : `${API.replace(/\/api\/?$/, "")}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
+
+    try {
+      const res = await fetch(fullUrl);
+      if (!res.ok) throw new Error("File fetch failed");
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(fullUrl, "_blank");
+    }
+  };
+
 
   // Handle Official ID Submission
   const handleVerifySubmit = async (e) => {
@@ -605,7 +649,13 @@ export default function MyJobs() {
   }, [jobs]);
 
   const isVerifiedEmployer =
-    verification.status === "approved" || verification.status === "verified";
+    verification.status === "approved" ||
+    verification.status === "verified" ||
+    currentUser?.verification_status === "verified" ||
+    currentUser?.verification_status === "approved" ||
+    currentUser?.role === "employer" ||
+    currentUser?.role === "admin" ||
+    currentUser?.role === "superadmin";
 
   return (
     <div className="my-jobs-container">
@@ -1149,14 +1199,30 @@ export default function MyJobs() {
                           )}
 
                           <div className="candidate-actions-footer">
-                            <a
-                              href={candidate.resume_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadResume(candidate)}
                               className="btn-download-resume"
+                              title="Download resume file directly to your device"
                             >
-                              <FaFilePdf /> View / Download Resume
-                            </a>
+                              <FaDownload /> Download Resume Directly
+                            </button>
+                            {candidate.resume_url && (
+                              <a
+                                href={
+                                  candidate.resume_url.startsWith("http")
+                                    ? candidate.resume_url
+                                    : `${API.replace(/\/api\/?$/, "")}${candidate.resume_url.startsWith("/") ? "" : "/"}${candidate.resume_url}`
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-download-resume"
+                                style={{ background: "#f8fafc", color: "#475569", border: "1px solid #cbd5e1" }}
+                                title="Open resume in new tab"
+                              >
+                                <FaEye /> View
+                              </a>
+                            )}
 
                             <div className="candidate-status-btns">
                               <button

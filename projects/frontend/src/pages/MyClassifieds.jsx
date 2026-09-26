@@ -256,10 +256,21 @@ const MyClassifieds = () => {
       }
 
       if (!saved) {
-        const { error } = await supabase.from("classifieds").insert([{
-          ...payload,
+        const supaPayload = {
           user_id: userId,
-        }]);
+          title: payload.title,
+          category: payload.category,
+          price: payload.price,
+          city: payload.city,
+          contact_phone: payload.contact_phone,
+          contact_whatsapp: payload.contact_whatsapp,
+          contact_name: payload.contact_name,
+          description: payload.condition ? `[Condition: ${payload.condition}] ${payload.description}` : payload.description,
+          media_url: payload.media_url,
+          media_type: payload.media_type,
+          status: "pending",
+        };
+        const { error } = await supabase.from("classifieds").insert([supaPayload]);
         if (error) throw error;
       }
 

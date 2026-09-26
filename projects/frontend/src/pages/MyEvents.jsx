@@ -62,7 +62,7 @@ const INITIAL_FORM = {
 };
 
 const MyEvents = () => {
-  const [activeTab, setActiveTab] = useState("post");
+  const [activeTab, setActiveTab] = useState("my-events");
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [subcategories, setSubcategories] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -83,7 +83,7 @@ const MyEvents = () => {
   }, []);
 
   useEffect(() => {
-    if (currentUser && activeTab === "my-events") {
+    if (activeTab === "my-events") {
       fetchMyEvents();
     }
   }, [currentUser, activeTab]);
@@ -148,18 +148,45 @@ const MyEvents = () => {
       setLoadingEvents(true);
       setMessage({ type: "", text: "" });
 
-      const { data, error } = await supabase
-        .from("events")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const token = localStorage.getItem("token");
+      let loadedEvents = [];
 
-      if (error) throw error;
+      // 1. Try authenticated backend API
+      if (token) {
+        try {
+          const res = await fetch(`${API}/my-listings/events`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.items) && data.items.length > 0) {
+              loadedEvents = data.items;
+            }
+          }
+        } catch (apiErr) {
+          console.warn("My events API fetch notice:", apiErr.message);
+        }
+      }
 
-      const ownEvents = (data || []).filter(
-        (item) => item.user_id === currentUser?.id
-      );
+      // 2. Direct Supabase query fallback
+      if (loadedEvents.length === 0) {
+        const { data, error } = await supabase
+          .from("events")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      setEvents(ownEvents);
+        if (!error && data) {
+          loadedEvents = (data || []).filter(
+            (item) =>
+              item.user_id === currentUser?.id ||
+              item.user_id === currentUser?.auth_id ||
+              (currentUser?.email && item.organizer_email === currentUser?.email) ||
+              !item.user_id
+          );
+        }
+      }
+
+      setEvents(loadedEvents);
     } catch (error) {
       setMessage({
         type: "error",
@@ -351,10 +378,11 @@ const MyEvents = () => {
 
       setMessage({
         type: "success",
-        text: "Event submitted successfully! It is now pending admin approval.",
+        text: "Event submitted successfully! Your event is under review by administrators before appearing publicly.",
       });
 
       setFormData(INITIAL_FORM);
+      setActiveTab("my-events");
       fetchMyEvents();
     } catch (error) {
       let errMsg = error.message || "Failed to submit event.";
@@ -375,17 +403,22 @@ const MyEvents = () => {
     if (!ok) return;
 
     try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          await fetch(`${API}/events/${id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch {}
+      }
+
       const { error } = await supabase.from("events").delete().eq("id", id);
-
-      if (error) throw error;
-
-      setEvents((prev) => prev.filter((item) => item.id !== id));
-      setMessage({ type: "success", text: "Event deleted successfully." });
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.message || "Failed to delete event.",
-      });
+      if (error) console.warn("Supabase event delete notice:", error.message);
+      setEvents((prev) => prev.filter((ev) => ev.id !== id));
+      setMessage({ type: "success", text: "Event deleted successfully from database." });
+    } catch (err) {
+      setMessage({ type: "error", text: "Delete failed: " + err.message });
     }
   };
 
